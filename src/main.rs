@@ -5,24 +5,38 @@ use futures_util::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use rand::RngCore;
 use reqwest::Client;
+use serde::Serialize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tokio::time::timeout;
 
 /// A blazing fast CLI Speedtest written in Rust
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Duration of the download/upload tests in seconds
     #[arg(short, long, default_value_t = 10)]
     duration: u64,
+
+    /// Output results as JSON (suppresses all visual UI)
+    #[arg(long, default_value_t = false)]
+    json: bool,
 }
 
 #[derive(Debug, Clone)]
 struct Server {
     name: String,
     base_url: String,
+}
+
+// 1. Define our JSON output structure
+#[derive(Serialize)]
+struct SpeedTestResult {
+    server_name: String,
+    ping_ms: u128,
+    download_mbps: f64,
+    upload_mbps: f64,
 }
 
 #[tokio::main]
@@ -36,19 +50,34 @@ async fn main() -> anyhow::Result<()> {
     // We use tokio::select! to race our application logic against a Ctrl+C signal
     tokio::select! {
         // Branch 1: The normal application execution
-        res = run_app(args, client) => {
-            // If run_app finishes normally (or with an error), return its result
-            res?;
+        res = run_app(args.clone(), client) => {
+            match res {
+                Ok(result) => {
+                    // 2. If --json is passed, print ONLY the JSON string
+                    if args.json {
+                        let json_out = serde_json::to_string_pretty(&result)?;
+                        println!("{}", json_out);
+                    }
+                }
+                Err(e) => {
+                    // Output errors in JSON format if requested
+                    if args.json {
+                        println!(r#"{{"error": "{}"}}"#, e);
+                    } else {
+                        eprintln!("❌ Error: {}", e);
+                    }
+                }
+            }
         }
 
         // Branch 2: The user presses Ctrl+C
         _ = tokio::signal::ctrl_c() => {
-            // 1. \r\x1b[2K clears the current terminal line (removing broken progress bars)
-            // 2. \x1b[?25h is the ANSI escape code to un-hide the terminal cursor!
-            print!("\r\x1b[2K\x1b[?25h");
-            println!("⚠️  Speedtest aborted by user.");
-
-            // Force exit so background tasks don't accidentally print more frames
+            if args.json {
+                println!(r#"{{"error": "aborted_by_user"}}"#);
+            } else {
+                print!("\r\x1b[2K\x1b[?25h");
+                println!("⚠️  Speedtest aborted by user.");
+            }
             std::process::exit(130);
         }
     }
@@ -57,8 +86,12 @@ async fn main() -> anyhow::Result<()> {
 }
 
 // Your existing main logic simply moves in here
-async fn run_app(args: Args, client: Client) -> anyhow::Result<()> {
-    println!("🚀 Starting Rust Speedtest...\n");
+async fn run_app(args: Args, client: Client) -> anyhow::Result<SpeedTestResult> {
+    let quiet = args.json;
+
+    if !quiet {
+        println!("🚀 Starting Rust Speedtest...\n");
+    }
 
     let server_pool = vec![
         Server {
@@ -71,32 +104,102 @@ async fn run_app(args: Args, client: Client) -> anyhow::Result<()> {
         },
     ];
 
-    let best_server = find_best_server(&client, server_pool).await?;
-    // Use best_server.url for your download/upload tests!
+    let best_server = find_best_server(&client, server_pool, quiet).await?;
 
-    // 1. PING TEST
-    let ping_latency = test_ping(&client, &best_server.base_url).await?;
-    println!("📡 Ping: {} ms\n", ping_latency);
+    let ping_latency = test_ping(&client, &best_server.base_url, quiet).await?;
+    if !quiet {
+        println!("📡 Ping: {} ms\n", ping_latency);
+    }
 
-    // 2. DOWNLOAD TEST
-    let down_speed = test_download(&client, &best_server.base_url, args.duration).await?;
-    println!("⬇️  Download Speed: {:.2} Mbps\n", down_speed);
+    let down_speed = test_download(&client, &best_server.base_url, args.duration, quiet).await?;
+    if !quiet {
+        println!("⬇️  Download Speed: {:.2} Mbps\n", down_speed);
+    }
 
-    // 3. UPLOAD TEST
-    let up_speed = test_upload(&client, &best_server.base_url, args.duration).await?;
-    println!("⬆️  Upload Speed: {:.2} Mbps\n", up_speed);
-
-    println!("--------------------------------------");
-    println!("🏁 Test Complete!");
-    println!("--------------------------------------");
-
-    Ok(())
+    let up_speed = test_upload(&client, &best_server.base_url, args.duration, quiet).await?;
+    if !quiet {
+        println!("⬆️  Upload Speed: {:.2} Mbps\n", up_speed);
+        println!("--------------------------------------");
+        println!("🏁 Test Complete!");
+        println!("--------------------------------------");
+    }
+    Ok(SpeedTestResult {
+        server_name: best_server.name,
+        ping_ms: ping_latency,
+        download_mbps: down_speed,
+        upload_mbps: up_speed,
+    })
 }
 
-async fn test_ping(client: &Client, base_url: &str) -> anyhow::Result<u128> {
-    let spinner = ProgressBar::new_spinner();
-    spinner.set_message("Measuring latency...");
-    spinner.enable_steady_tick(std::time::Duration::from_millis(100));
+async fn find_best_server(
+    client: &Client,
+    servers: Vec<Server>,
+    quiet: bool,
+) -> anyhow::Result<Server> {
+    if !quiet {
+        println!("🔍 Finding best server...");
+    }
+
+    let mut ping_tasks = vec![];
+
+    for server in servers {
+        let client = client.clone();
+        let server_node = server.clone();
+
+        // Task: Measure latency for this specific server
+        let task = tokio::spawn(async move {
+            let start = Instant::now();
+            let url = format!("{}/cdn-cgi/trace", server_node.base_url);
+            let res = client.head(&url).send().await;
+
+            match res {
+                Ok(_) => {
+                    let latency = start.elapsed().as_millis();
+                    Ok::<(u128, Server), anyhow::Error>((latency, server_node))
+                }
+                Err(e) => Err(anyhow::anyhow!("Server {} failed: {}", server_node.name, e)),
+            }
+        });
+        ping_tasks.push(task);
+    }
+
+    // Wait for all pings to return
+    let results = join_all(ping_tasks).await;
+
+    // Filter out errors and find the one with the minimum latency
+    let best = results
+        .into_iter()
+        .filter_map(|res| res.ok().and_then(|inner| inner.ok()))
+        .min_by_key(|(latency, _)| *latency);
+
+    match best {
+        Some((latency, server)) => {
+            if !quiet {
+                println!("✅ Selected {} ({} ms)", server.name, latency);
+            }
+            Ok(server)
+        }
+        None => Err(anyhow::anyhow!("No servers were reachable")),
+    }
+}
+
+// 4. Helper to cleanly build hidden vs visible progress bars
+fn create_spinner(msg: &str, quiet: bool, style_template: &str) -> ProgressBar {
+    if quiet {
+        ProgressBar::hidden()
+    } else {
+        let pb = ProgressBar::new_spinner();
+        if let Ok(style) = ProgressStyle::default_spinner().template(style_template) {
+            pb.set_style(style);
+        }
+        pb.set_message(msg.to_string());
+        pb.enable_steady_tick(Duration::from_millis(100));
+        pb
+    }
+}
+
+async fn test_ping(client: &Client, base_url: &str, quiet: bool) -> anyhow::Result<u128> {
+    let pb = create_spinner("Measuring latency...", quiet, "{spinner:.cyan} {msg}");
 
     let start = Instant::now();
     // Use the dynamic URL
@@ -104,11 +207,16 @@ async fn test_ping(client: &Client, base_url: &str) -> anyhow::Result<u128> {
     client.get(&url).send().await?;
     let duration = start.elapsed();
 
-    spinner.finish_and_clear();
+    pb.finish_and_clear();
     Ok(duration.as_millis())
 }
 
-async fn test_download(client: &Client, base_url: &str, duration_secs: u64) -> anyhow::Result<f64> {
+async fn test_download(
+    client: &Client,
+    base_url: &str,
+    duration_secs: u64,
+    quiet: bool,
+) -> anyhow::Result<f64> {
     let num_connections = 8;
     // We request 50MB per connection at a time to ensure the server doesn't reject the size
     let chunk_size_bytes = 50 * 1024 * 1024;
@@ -117,11 +225,11 @@ async fn test_download(client: &Client, base_url: &str, duration_secs: u64) -> a
     let total_downloaded = Arc::new(AtomicU64::new(0));
 
     // Because we don't know the final size, we switch from a ProgressBar to a Spinner
-    let pb = ProgressBar::new_spinner();
-    pb.set_style(ProgressStyle::default_spinner().template(
+    let pb = create_spinner(
+        "Downloading...",
+        quiet,
         "{spinner:.green} [{elapsed_precise}] Downloading... {bytes} total ({bytes_per_sec})",
-    )?);
-    pb.enable_steady_tick(Duration::from_millis(100));
+    );
 
     let mut tasks = vec![];
     let start = Instant::now();
@@ -176,15 +284,21 @@ async fn test_download(client: &Client, base_url: &str, duration_secs: u64) -> a
     Ok(speed_mbps)
 }
 
-async fn test_upload(client: &Client, base_url: &str, duration_secs: u64) -> anyhow::Result<f64> {
+async fn test_upload(
+    client: &Client,
+    base_url: &str,
+    duration_secs: u64,
+    quiet: bool,
+) -> anyhow::Result<f64> {
     let num_connections = 4;
     let chunk_size = 2 * 1024 * 1024; // 2MB chunks
     let total_uploaded = Arc::new(AtomicU64::new(0));
 
-    let pb = ProgressBar::new_spinner();
-    pb.set_style(ProgressStyle::default_spinner()
-        .template("{spinner:.red} [{elapsed_precise}] Uploading (random data)... {bytes} total ({bytes_per_sec})")?);
-    pb.enable_steady_tick(Duration::from_millis(100));
+    let pb = create_spinner(
+        "Uploading (random data)...",
+        quiet,
+        "{spinner:.red} [{elapsed_precise}] Uploading (random data)... {bytes} total ({bytes_per_sec})",
+    );
 
     let mut tasks = vec![];
     let start = Instant::now();
@@ -239,48 +353,4 @@ async fn test_upload(client: &Client, base_url: &str, duration_secs: u64) -> any
     let speed_mbps = (final_megabytes * 8.0) / duration;
 
     Ok(speed_mbps)
-}
-
-async fn find_best_server(client: &Client, servers: Vec<Server>) -> anyhow::Result<Server> {
-    println!("🔍 Finding best server...");
-
-    let mut ping_tasks = vec![];
-
-    for server in servers {
-        let client = client.clone();
-        let server_node = server.clone();
-
-        // Task: Measure latency for this specific server
-        let task = tokio::spawn(async move {
-            let start = Instant::now();
-            let url = format!("{}/cdn-cgi/trace", server_node.base_url);
-            let res = client.head(&url).send().await;
-
-            match res {
-                Ok(_) => {
-                    let latency = start.elapsed().as_millis();
-                    Ok::<(u128, Server), anyhow::Error>((latency, server_node))
-                }
-                Err(e) => Err(anyhow::anyhow!("Server {} failed: {}", server_node.name, e)),
-            }
-        });
-        ping_tasks.push(task);
-    }
-
-    // Wait for all pings to return
-    let results = join_all(ping_tasks).await;
-
-    // Filter out errors and find the one with the minimum latency
-    let best = results
-        .into_iter()
-        .filter_map(|res| res.ok().and_then(|inner| inner.ok()))
-        .min_by_key(|(latency, _)| *latency);
-
-    match best {
-        Some((latency, server)) => {
-            println!("✅ Selected {} ({} ms)", server.name, latency);
-            Ok(server)
-        }
-        None => Err(anyhow::anyhow!("No servers were reachable")),
-    }
 }
