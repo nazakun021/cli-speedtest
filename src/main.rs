@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tokio::time::timeout;
+use tracing::debug;
 
 /// A blazing fast CLI Speedtest written in Rust
 #[derive(Parser, Debug, Clone)]
@@ -22,6 +23,10 @@ struct Args {
     /// Output results as JSON (suppresses all visual UI)
     #[arg(long, default_value_t = false)]
     json: bool,
+
+    /// Enable debug logging for troubleshooting
+    #[arg(long, default_value_t = false)]
+    debug: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -42,6 +47,16 @@ struct SpeedTestResult {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
+
+    // Initialize the logger. If --debug is passed, show debug logs. Otherwise, hide them.
+    let log_level = if args.debug { "debug" } else { "error" };
+    tracing_subscriber::fmt()
+        .with_env_filter(log_level)
+        .with_writer(std::io::stderr) // Write logs to stderr so it doesn't break JSON stdout
+        .init();
+
+    debug!("Application started with args: {:?}", args);
+
     // Setting a User-Agent is good practice and prevents many CDNs from blocking requests
     let client = Client::builder()
         .user_agent("rust-speedtest/0.1.0")
@@ -198,6 +213,14 @@ fn create_spinner(msg: &str, quiet: bool, style_template: &str) -> ProgressBar {
     }
 }
 
+fn calculate_mbps(bytes: u64, duration_secs: f64) -> f64 {
+    if duration_secs <= 0.0 {
+        return 0.0;
+    }
+    let megabytes = (bytes as f64) / (1024.0 * 1024.0);
+    (megabytes * 8.0) / duration_secs
+}
+
 async fn test_ping(client: &Client, base_url: &str, quiet: bool) -> anyhow::Result<u128> {
     let pb = create_spinner("Measuring latency...", quiet, "{spinner:.cyan} {msg}");
 
@@ -276,10 +299,8 @@ async fn test_download(
     let duration = start.elapsed().as_secs_f64();
     pb.finish_and_clear();
 
-    // Calculate final Mbps based on exactly how many bytes we managed to grab
-    let final_bytes = total_downloaded.load(Ordering::Relaxed) as f64;
-    let final_megabytes = final_bytes / (1024.0 * 1024.0);
-    let speed_mbps = (final_megabytes * 8.0) / duration;
+    // Calculate final Mbps using our pure function
+    let speed_mbps = calculate_mbps(total_downloaded.load(Ordering::Relaxed), duration);
 
     Ok(speed_mbps)
 }
@@ -348,9 +369,27 @@ async fn test_upload(
     let duration = start.elapsed().as_secs_f64();
     pb.finish_and_clear();
 
-    let final_bytes = total_uploaded.load(Ordering::Relaxed) as f64;
-    let final_megabytes = final_bytes / (1024.0 * 1024.0);
-    let speed_mbps = (final_megabytes * 8.0) / duration;
+    let speed_mbps = calculate_mbps(total_uploaded.load(Ordering::Relaxed), duration);
 
     Ok(speed_mbps)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_calculate_mbps() {
+        // If we download 12.5 MiB in 1 second, that's exactly 100 Mbps
+        // 12.5 * 1024 * 1024 = 13,107,200 bytes
+        let bytes = 13_107_200;
+        let speed = calculate_mbps(bytes, 1.0);
+        assert!((speed - 100.0).abs() < 0.001, "Speed was {}", speed);
+    }
+
+    #[test]
+    fn test_calculate_mbps_zero_duration() {
+        let speed = calculate_mbps(1000, 0.0);
+        assert_eq!(speed, 0.0);
+    }
 }

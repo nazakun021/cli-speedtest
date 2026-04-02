@@ -2,6 +2,12 @@
 name = "cli-speedtest"
 version = "0.1.0"
 edition = "2024"
+authors = ["Tirso Benedict J. Naza <[benedictnaza@gmail.com]>"]
+description = "CLI based speedtest written on rust"
+repository = "https://github.com/nazakun021/cli-speedtest"
+license = "Apache-2.0"
+keywords = ["cli", "network", "speedtest", "async"]
+categories = ["command-line-utilities", "network-programming"]
 
 [dependencies]
 reqwest = { version = "0.11", features = ["rustls-tls", "stream"] }
@@ -15,3 +21,5 @@ rand = "0.8"
 bytes = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
