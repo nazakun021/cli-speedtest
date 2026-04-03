@@ -1,6 +1,5 @@
 use bytes::Bytes;
 use clap::Parser;
-use futures::future::join_all;
 use futures_util::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use rand::RngCore;
@@ -27,6 +26,19 @@ struct Args {
     /// Enable debug logging for troubleshooting
     #[arg(long, default_value_t = false)]
     debug: bool,
+
+    /// Number of pings to send for latency/jitter measurement
+    #[arg(long, default_value_t = 20)]
+    ping_count: u32,
+}
+
+#[derive(Serialize)]
+struct PingStats {
+    min_ms: u128,
+    max_ms: u128,
+    avg_ms: f64,
+    jitter_ms: f64,
+    packet_loss_pct: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -39,7 +51,7 @@ struct Server {
 #[derive(Serialize)]
 struct SpeedTestResult {
     server_name: String,
-    ping_ms: u128,
+    ping: PingStats,
     download_mbps: f64,
     upload_mbps: f64,
 }
@@ -108,94 +120,61 @@ async fn run_app(args: Args, client: Client) -> anyhow::Result<SpeedTestResult> 
         println!("🚀 Starting Rust Speedtest...\n");
     }
 
-    let server_pool = vec![
-        Server {
-            name: "Cloudflare (Global)".into(),
-            base_url: "https://speed.cloudflare.com".into(),
-        },
-        Server {
-            name: "Cloudflare (Alternative)".into(),
-            base_url: "https://speed.cloudflare.com".into(),
-        },
-    ];
+    let server = Server {
+        name: "Cloudflare".into(),
+        base_url: "https://speed.cloudflare.com".into(),
+    };
 
-    let best_server = find_best_server(&client, server_pool, quiet).await?;
-
-    let ping_latency = test_ping(&client, &best_server.base_url, quiet).await?;
     if !quiet {
-        println!("📡 Ping: {} ms\n", ping_latency);
+        println!("🔍 Using server: {}", server.name);
     }
 
-    let down_speed = test_download(&client, &best_server.base_url, args.duration, quiet).await?;
+    // --- Ping / Jitter / Packet Loss ---
+    let ping_stats = test_ping_stats(&client, &server.base_url, args.ping_count, quiet).await?;
+
+    // --- Download ---
+    let down_speed = test_download(&client, &server.base_url, args.duration, quiet).await?;
+
+    // --- Upload ---
+    let up_speed = test_upload(&client, &server.base_url, args.duration, quiet).await?;
+
+    // --- Summary ---
     if !quiet {
-        println!("⬇️  Download Speed: {:.2} Mbps\n", down_speed);
+        println!();
+        println!("╔══════════════════════════════════════╗");
+        println!("║           📊 Test Summary            ║");
+        println!("╠══════════════════════════════════════╣");
+        println!("║  Server     : {:<23}║", server.name);
+        println!("╠══════════════════════════════════════╣");
+        println!(
+            "║  Ping       : {:<20} ms ║",
+            format!("{:.1}", ping_stats.avg_ms)
+        );
+        println!(
+            "║  Jitter     : {:<20} ms ║",
+            format!("{:.2}", ping_stats.jitter_ms)
+        );
+        println!("║  Min Ping   : {:<20} ms ║", ping_stats.min_ms);
+        println!("║  Max Ping   : {:<20} ms ║", ping_stats.max_ms);
+        println!(
+            "║  Packet Loss: {:<19} %  ║",
+            format!("{:.1}", ping_stats.packet_loss_pct)
+        );
+        println!("╠══════════════════════════════════════╣");
+        println!(
+            "║  Download   : {:<18} Mbps ║",
+            format!("{:.2}", down_speed)
+        );
+        println!("║  Upload     : {:<18} Mbps ║", format!("{:.2}", up_speed));
+        println!("╚══════════════════════════════════════╝");
     }
 
-    let up_speed = test_upload(&client, &best_server.base_url, args.duration, quiet).await?;
-    if !quiet {
-        println!("⬆️  Upload Speed: {:.2} Mbps\n", up_speed);
-        println!("--------------------------------------");
-        println!("🏁 Test Complete!");
-        println!("--------------------------------------");
-    }
     Ok(SpeedTestResult {
-        server_name: best_server.name,
-        ping_ms: ping_latency,
+        server_name: server.name,
+        ping: ping_stats,
         download_mbps: down_speed,
         upload_mbps: up_speed,
     })
-}
-
-async fn find_best_server(
-    client: &Client,
-    servers: Vec<Server>,
-    quiet: bool,
-) -> anyhow::Result<Server> {
-    if !quiet {
-        println!("🔍 Finding best server...");
-    }
-
-    let mut ping_tasks = vec![];
-
-    for server in servers {
-        let client = client.clone();
-        let server_node = server.clone();
-
-        // Task: Measure latency for this specific server
-        let task = tokio::spawn(async move {
-            let start = Instant::now();
-            let url = format!("{}/cdn-cgi/trace", server_node.base_url);
-            let res = client.head(&url).send().await;
-
-            match res {
-                Ok(_) => {
-                    let latency = start.elapsed().as_millis();
-                    Ok::<(u128, Server), anyhow::Error>((latency, server_node))
-                }
-                Err(e) => Err(anyhow::anyhow!("Server {} failed: {}", server_node.name, e)),
-            }
-        });
-        ping_tasks.push(task);
-    }
-
-    // Wait for all pings to return
-    let results = join_all(ping_tasks).await;
-
-    // Filter out errors and find the one with the minimum latency
-    let best = results
-        .into_iter()
-        .filter_map(|res| res.ok().and_then(|inner| inner.ok()))
-        .min_by_key(|(latency, _)| *latency);
-
-    match best {
-        Some((latency, server)) => {
-            if !quiet {
-                println!("✅ Selected {} ({} ms)", server.name, latency);
-            }
-            Ok(server)
-        }
-        None => Err(anyhow::anyhow!("No servers were reachable")),
-    }
 }
 
 // 4. Helper to cleanly build hidden vs visible progress bars
@@ -221,17 +200,65 @@ fn calculate_mbps(bytes: u64, duration_secs: f64) -> f64 {
     (megabytes * 8.0) / duration_secs
 }
 
-async fn test_ping(client: &Client, base_url: &str, quiet: bool) -> anyhow::Result<u128> {
-    let pb = create_spinner("Measuring latency...", quiet, "{spinner:.cyan} {msg}");
+/// Sends `count` sequential HEAD requests and computes min, max, avg ping,
+/// jitter (mean absolute deviation between consecutive samples), and packet loss.
+async fn test_ping_stats(
+    client: &Client,
+    base_url: &str,
+    count: u32,
+    quiet: bool,
+) -> anyhow::Result<PingStats> {
+    let pb = create_spinner(
+        "Measuring latency & jitter...",
+        quiet,
+        "{spinner:.cyan} {msg}",
+    );
 
-    let start = Instant::now();
-    // Use the dynamic URL
     let url = format!("{}/cdn-cgi/trace", base_url);
-    client.get(&url).send().await?;
-    let duration = start.elapsed();
+    let mut samples: Vec<u128> = Vec::with_capacity(count as usize);
+    let mut lost: u32 = 0;
+
+    for _ in 0..count {
+        let start = Instant::now();
+        // 2s timeout per ping — anything longer counts as lost
+        match timeout(Duration::from_secs(2), client.head(&url).send()).await {
+            Ok(Ok(_)) => samples.push(start.elapsed().as_millis()),
+            _ => lost += 1,
+        }
+        // Small gap between pings, like real ping tools do
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
 
     pb.finish_and_clear();
-    Ok(duration.as_millis())
+
+    if samples.is_empty() {
+        anyhow::bail!("All ping attempts failed — server unreachable");
+    }
+
+    let min_ms = *samples.iter().min().unwrap();
+    let max_ms = *samples.iter().max().unwrap();
+    let avg_ms = samples.iter().sum::<u128>() as f64 / samples.len() as f64;
+
+    // Jitter = mean of absolute differences between consecutive samples (RFC 3550 style)
+    let jitter_ms = if samples.len() > 1 {
+        let diffs: Vec<f64> = samples
+            .windows(2)
+            .map(|w| (w[1] as f64 - w[0] as f64).abs())
+            .collect();
+        diffs.iter().sum::<f64>() / diffs.len() as f64
+    } else {
+        0.0
+    };
+
+    let packet_loss_pct = (lost as f64 / count as f64) * 100.0;
+
+    Ok(PingStats {
+        min_ms,
+        max_ms,
+        avg_ms,
+        jitter_ms,
+        packet_loss_pct,
+    })
 }
 
 async fn test_download(
@@ -363,7 +390,7 @@ async fn test_upload(
     }
 
     for task in tasks {
-        let _ = task.await?;
+        task.await??;
     }
 
     let duration = start.elapsed().as_secs_f64();
