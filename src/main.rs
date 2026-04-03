@@ -12,6 +12,9 @@ use tokio::time::timeout;
 use tracing::debug;
 
 const WARMUP_SECS: f64 = 2.0;
+const MAX_RETRIES: u32 = 3;
+const CONNECT_TIMEOUT_SECS: u64 = 10;
+const REQUEST_TIMEOUT_SECS: u64 = 30;
 
 /// A blazing fast CLI Speedtest written in Rust
 #[derive(Parser, Debug, Clone)]
@@ -72,6 +75,8 @@ async fn main() -> anyhow::Result<()> {
 
     let client = Client::builder()
         .user_agent("rust-speedtest/0.1.0")
+        .connect_timeout(Duration::from_secs(CONNECT_TIMEOUT_SECS))
+        .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
         .build()?;
 
     tokio::select! {
@@ -190,6 +195,36 @@ fn calculate_mbps(bytes: u64, duration_secs: f64) -> f64 {
     (megabytes * 8.0) / duration_secs
 }
 
+/// Retries an async operation up to `max_retries` times with exponential backoff.
+/// Delays: 100 ms, 200 ms, 400 ms — then gives up and surfaces the last error.
+async fn with_retry<F, Fut, T>(max_retries: u32, mut f: F) -> anyhow::Result<T>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = anyhow::Result<T>>,
+{
+    let mut last_err = anyhow::anyhow!("No attempts made");
+    for attempt in 0..=max_retries {
+        match f().await {
+            Ok(val) => return Ok(val),
+            Err(e) => {
+                if attempt < max_retries {
+                    let backoff = Duration::from_millis(100 * 2u64.pow(attempt));
+                    debug!(
+                        "Request failed (attempt {}/{}): {}. Retrying in {:?}...",
+                        attempt + 1,
+                        max_retries + 1,
+                        e,
+                        backoff
+                    );
+                    tokio::time::sleep(backoff).await;
+                }
+                last_err = e;
+            }
+        }
+    }
+    Err(last_err)
+}
+
 /// Sends `count` sequential HEAD requests and computes min, max, avg ping,
 /// jitter (mean absolute deviation between consecutive samples), and packet loss.
 async fn test_ping_stats(
@@ -286,10 +321,13 @@ async fn test_download(
         let task = tokio::spawn(async move {
             let download_logic = async {
                 loop {
-                    let res = client.get(&url).send().await?;
-                    if !res.status().is_success() {
-                        anyhow::bail!("Download request failed with status: {}", res.status());
-                    }
+                    let res = with_retry(MAX_RETRIES, || async {
+                        let r = client.get(&url).send().await?;
+                        if !r.status().is_success() {
+                            anyhow::bail!("Download request failed with status: {}", r.status());
+                        }
+                        Ok(r)
+                    }).await?;
                     let mut stream = res.bytes_stream();
                     while let Some(item) = stream.next().await {
                         let chunk = item?;
@@ -358,14 +396,17 @@ async fn test_upload(
                 let payload = Bytes::from(raw_payload);
 
                 loop {
-                    let res = client
-                        .post(url.clone())
-                        .body(payload.clone())
-                        .send()
-                        .await?;
-                    if !res.status().is_success() {
-                        anyhow::bail!("Upload request failed with status: {}", res.status());
-                    }
+                    let _ = with_retry(MAX_RETRIES, || async {
+                        let r = client
+                            .post(url.clone())
+                            .body(payload.clone())
+                            .send()
+                            .await?;
+                        if !r.status().is_success() {
+                            anyhow::bail!("Upload request failed with status: {}", r.status());
+                        }
+                        Ok(r)
+                    }).await?;
                     let len = payload.len() as u64;
                     // Always update progress bar so the user sees live activity
                     pb.inc(len);
@@ -391,6 +432,7 @@ async fn test_upload(
     let total_duration = start.elapsed().as_secs_f64();
     pb.finish_and_clear();
 
+    // Subtract warm-up from the denominator so Mbps reflects only the plateau
     let effective_duration = (total_duration - WARMUP_SECS).max(0.0);
     Ok(calculate_mbps(
         total_uploaded.load(Ordering::Relaxed),
