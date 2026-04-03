@@ -11,6 +11,8 @@ use std::time::{Duration, Instant};
 use tokio::time::timeout;
 use tracing::debug;
 
+const WARMUP_SECS: f64 = 2.0;
+
 /// A blazing fast CLI Speedtest written in Rust
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
@@ -60,34 +62,28 @@ struct SpeedTestResult {
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
-    // Initialize the logger. If --debug is passed, show debug logs. Otherwise, hide them.
     let log_level = if args.debug { "debug" } else { "error" };
     tracing_subscriber::fmt()
         .with_env_filter(log_level)
-        .with_writer(std::io::stderr) // Write logs to stderr so it doesn't break JSON stdout
+        .with_writer(std::io::stderr)
         .init();
 
     debug!("Application started with args: {:?}", args);
 
-    // Setting a User-Agent is good practice and prevents many CDNs from blocking requests
     let client = Client::builder()
         .user_agent("rust-speedtest/0.1.0")
         .build()?;
 
-    // We use tokio::select! to race our application logic against a Ctrl+C signal
     tokio::select! {
-        // Branch 1: The normal application execution
         res = run_app(args.clone(), client) => {
             match res {
                 Ok(result) => {
-                    // 2. If --json is passed, print ONLY the JSON string
                     if args.json {
                         let json_out = serde_json::to_string_pretty(&result)?;
                         println!("{}", json_out);
                     }
                 }
                 Err(e) => {
-                    // Output errors in JSON format if requested
                     if args.json {
                         println!(r#"{{"error": "{}"}}"#, e);
                     } else {
@@ -96,8 +92,6 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         }
-
-        // Branch 2: The user presses Ctrl+C
         _ = tokio::signal::ctrl_c() => {
             if args.json {
                 println!(r#"{{"error": "aborted_by_user"}}"#);
@@ -112,21 +106,29 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-// Your existing main logic simply moves in here
 async fn run_app(args: Args, client: Client) -> anyhow::Result<SpeedTestResult> {
     let quiet = args.json;
+
+    if args.duration <= WARMUP_SECS as u64 {
+        anyhow::bail!(
+            "Duration must be greater than {} seconds (warm-up period). Got: {}s",
+            WARMUP_SECS,
+            args.duration
+        );
+    }
 
     if !quiet {
         println!("🚀 Starting Rust Speedtest...\n");
     }
 
+    // Single server — Cloudflare anycast routes to the nearest edge automatically
     let server = Server {
         name: "Cloudflare".into(),
         base_url: "https://speed.cloudflare.com".into(),
     };
 
     if !quiet {
-        println!("🔍 Using server: {}", server.name);
+        println!("🔍 Using server: {}\n", server.name);
     }
 
     // --- Ping / Jitter / Packet Loss ---
@@ -146,25 +148,13 @@ async fn run_app(args: Args, client: Client) -> anyhow::Result<SpeedTestResult> 
         println!("╠══════════════════════════════════════╣");
         println!("║  Server     : {:<23}║", server.name);
         println!("╠══════════════════════════════════════╣");
-        println!(
-            "║  Ping       : {:<20} ms ║",
-            format!("{:.1}", ping_stats.avg_ms)
-        );
-        println!(
-            "║  Jitter     : {:<20} ms ║",
-            format!("{:.2}", ping_stats.jitter_ms)
-        );
+        println!("║  Ping       : {:<20} ms ║", format!("{:.1}", ping_stats.avg_ms));
+        println!("║  Jitter     : {:<20} ms ║", format!("{:.2}", ping_stats.jitter_ms));
         println!("║  Min Ping   : {:<20} ms ║", ping_stats.min_ms);
         println!("║  Max Ping   : {:<20} ms ║", ping_stats.max_ms);
-        println!(
-            "║  Packet Loss: {:<19} %  ║",
-            format!("{:.1}", ping_stats.packet_loss_pct)
-        );
+        println!("║  Packet Loss: {:<19} %  ║", format!("{:.1}", ping_stats.packet_loss_pct));
         println!("╠══════════════════════════════════════╣");
-        println!(
-            "║  Download   : {:<18} Mbps ║",
-            format!("{:.2}", down_speed)
-        );
+        println!("║  Download   : {:<18} Mbps ║", format!("{:.2}", down_speed));
         println!("║  Upload     : {:<18} Mbps ║", format!("{:.2}", up_speed));
         println!("╚══════════════════════════════════════╝");
     }
@@ -252,6 +242,13 @@ async fn test_ping_stats(
 
     let packet_loss_pct = (lost as f64 / count as f64) * 100.0;
 
+    if !quiet {
+        println!(
+            "📡 Ping: {:.1} ms avg  |  Jitter: {:.2} ms  |  Loss: {:.1}%\n",
+            avg_ms, jitter_ms, packet_loss_pct
+        );
+    }
+
     Ok(PingStats {
         min_ms,
         max_ms,
@@ -268,13 +265,9 @@ async fn test_download(
     quiet: bool,
 ) -> anyhow::Result<f64> {
     let num_connections = 8;
-    // We request 50MB per connection at a time to ensure the server doesn't reject the size
     let chunk_size_bytes = 50 * 1024 * 1024;
-
-    // We use an Atomic counter to thread-safely tally the total bytes downloaded
     let total_downloaded = Arc::new(AtomicU64::new(0));
 
-    // Because we don't know the final size, we switch from a ProgressBar to a Spinner
     let pb = create_spinner(
         "Downloading...",
         quiet,
@@ -297,19 +290,21 @@ async fn test_download(
                     if !res.status().is_success() {
                         anyhow::bail!("Download request failed with status: {}", res.status());
                     }
-
                     let mut stream = res.bytes_stream();
                     while let Some(item) = stream.next().await {
                         let chunk = item?;
                         let len = chunk.len() as u64;
+                        // Always update progress bar so the user sees live activity
                         pb.inc(len);
-                        total_downloaded.fetch_add(len, Ordering::Relaxed);
+                        // Only count bytes after warm-up to exclude TCP slow-start ramp
+                        if start.elapsed().as_secs_f64() >= WARMUP_SECS {
+                            total_downloaded.fetch_add(len, Ordering::Relaxed);
+                        }
                     }
                 }
                 #[allow(unreachable_code)]
                 Ok::<(), anyhow::Error>(())
             };
-
             let _ = timeout(Duration::from_secs(duration_secs), download_logic).await;
             Ok::<(), anyhow::Error>(())
         });
@@ -317,19 +312,19 @@ async fn test_download(
         tasks.push(task);
     }
 
-    // Wait for all Tokio tasks to finish
     for task in tasks {
-        task.await??; // This will now correctly propagate errors if any inner task failed
+        task.await??;
     }
 
-    // Stop the timer and clear the progress bar
-    let duration = start.elapsed().as_secs_f64();
+    let total_duration = start.elapsed().as_secs_f64();
     pb.finish_and_clear();
 
-    // Calculate final Mbps using our pure function
-    let speed_mbps = calculate_mbps(total_downloaded.load(Ordering::Relaxed), duration);
-
-    Ok(speed_mbps)
+    // Subtract warm-up from the denominator so Mbps reflects only the plateau
+    let effective_duration = (total_duration - WARMUP_SECS).max(0.0);
+    Ok(calculate_mbps(
+        total_downloaded.load(Ordering::Relaxed),
+        effective_duration,
+    ))
 }
 
 async fn test_upload(
@@ -339,9 +334,8 @@ async fn test_upload(
     quiet: bool,
 ) -> anyhow::Result<f64> {
     let num_connections = 4;
-    let chunk_size = 2 * 1024 * 1024; // 2MB chunks
+    let chunk_size = 2 * 1024 * 1024;
     let total_uploaded = Arc::new(AtomicU64::new(0));
-
     let pb = create_spinner(
         "Uploading (random data)...",
         quiet,
@@ -361,8 +355,6 @@ async fn test_upload(
             let upload_logic = async {
                 let mut raw_payload = vec![0u8; chunk_size];
                 rand::thread_rng().fill_bytes(&mut raw_payload);
-
-                // Convert the Vec to a cheap-to-clone Bytes object
                 let payload = Bytes::from(raw_payload);
 
                 loop {
@@ -374,10 +366,13 @@ async fn test_upload(
                     if !res.status().is_success() {
                         anyhow::bail!("Upload request failed with status: {}", res.status());
                     }
-
                     let len = payload.len() as u64;
+                    // Always update progress bar so the user sees live activity
                     pb.inc(len);
-                    total_uploaded.fetch_add(len, Ordering::Relaxed);
+                    // Only count bytes after warm-up to exclude TCP slow-start ramp
+                    if start.elapsed().as_secs_f64() >= WARMUP_SECS {
+                        total_uploaded.fetch_add(len, Ordering::Relaxed);
+                    }
                 }
                 #[allow(unreachable_code)]
                 Ok::<(), anyhow::Error>(())
@@ -393,12 +388,14 @@ async fn test_upload(
         task.await??;
     }
 
-    let duration = start.elapsed().as_secs_f64();
+    let total_duration = start.elapsed().as_secs_f64();
     pb.finish_and_clear();
 
-    let speed_mbps = calculate_mbps(total_uploaded.load(Ordering::Relaxed), duration);
-
-    Ok(speed_mbps)
+    let effective_duration = (total_duration - WARMUP_SECS).max(0.0);
+    Ok(calculate_mbps(
+        total_uploaded.load(Ordering::Relaxed),
+        effective_duration,
+    ))
 }
 
 #[cfg(test)]
@@ -407,8 +404,6 @@ mod tests {
 
     #[test]
     fn test_calculate_mbps() {
-        // If we download 12.5 MiB in 1 second, that's exactly 100 Mbps
-        // 12.5 * 1024 * 1024 = 13,107,200 bytes
         let bytes = 13_107_200;
         let speed = calculate_mbps(bytes, 1.0);
         assert!((speed - 100.0).abs() < 0.001, "Speed was {}", speed);
