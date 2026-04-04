@@ -1,4 +1,11 @@
+// src/models.rs
+
 use serde::Serialize;
+
+#[derive(Debug, Clone)]
+pub struct AppConfig {
+    pub quiet: bool,
+}
 
 #[derive(Serialize, Debug, Clone)]
 pub struct PingStats {

@@ -2,7 +2,7 @@
 name = "cli-speedtest"
 version = "0.1.0"
 edition = "2024"
-authors = ["Tirso Benedict J. Naza <[benedictnaza@gmail.com]>"]
+authors = ["Tirso Benedict J. Naza <benedictnaza@gmail.com>"]
 description = "CLI based speedtest written on rust"
 repository = "https://github.com/nazakun021/cli-speedtest"
 license = "Apache-2.0"
@@ -12,12 +12,13 @@ categories = ["command-line-utilities", "network-programming"]
 [dependencies]
 reqwest = { version = "0.11", features = ["rustls-tls", "stream"] }
 tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["sync"] }
 indicatif = "0.17"
 clap = { version = "4.4", features = ["derive"] }
 futures-util = "0.3"
 anyhow = "1.0"
 futures = "0.3"
-rand = "0.8"
+rand = "0.9"
 bytes = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

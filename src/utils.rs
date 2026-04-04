@@ -1,9 +1,14 @@
+// src/utils.rs
+
+use crate::models::AppConfig;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::time::Duration;
 use tracing::debug;
 
-pub fn create_spinner(msg: &str, quiet: bool, style_template: &str) -> ProgressBar {
-    if quiet {
+pub const WARMUP_SECS: f64 = 2.0;
+
+pub fn create_spinner(msg: &str, config: &AppConfig, style_template: &str) -> ProgressBar {
+    if config.quiet {
         ProgressBar::hidden()
     } else {
         let pb = ProgressBar::new_spinner();
@@ -24,8 +29,6 @@ pub fn calculate_mbps(bytes: u64, duration_secs: f64) -> f64 {
     (megabytes * 8.0) / duration_secs
 }
 
-/// Retries an async operation up to `max_retries` times with exponential backoff.
-/// Delays: 100 ms, 200 ms, 400 ms — then gives up and surfaces the last error.
 pub async fn with_retry<F, Fut, T>(max_retries: u32, mut f: F) -> anyhow::Result<T>
 where
     F: FnMut() -> Fut,

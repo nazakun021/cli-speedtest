@@ -1,41 +1,38 @@
+// src/main.rs
+
+use chrono::Utc;
 use clap::Parser;
 use reqwest::Client;
+use std::sync::Arc;
 use std::time::Duration;
 use tracing::debug;
-use chrono::Utc;
 
+mod client;
 mod models;
 mod utils;
-mod client;
 
-use models::{Server, SpeedTestResult};
-use client::{test_ping_stats, test_download, test_upload};
+use client::{test_download, test_ping_stats, test_upload};
+use models::{AppConfig, Server, SpeedTestResult};  // CHANGED: import AppConfig
+use utils::WARMUP_SECS;
 
-const WARMUP_SECS: f64 = 2.0;
 const CONNECT_TIMEOUT_SECS: u64 = 10;
 const REQUEST_TIMEOUT_SECS: u64 = 30;
 
-/// A blazing fast CLI Speedtest written in Rust
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// Duration of the download/upload tests in seconds
     #[arg(short, long, default_value_t = 10)]
     duration: u64,
 
-    /// Number of parallel connections for testing (default: 8 for down, 4 for up)
     #[arg(short, long)]
     connections: Option<usize>,
 
-    /// Output results as JSON (suppresses all visual UI)
     #[arg(long, default_value_t = false)]
     json: bool,
 
-    /// Enable debug logging for troubleshooting
     #[arg(long, default_value_t = false)]
     debug: bool,
 
-    /// Number of pings to send for latency/jitter measurement
     #[arg(long, default_value_t = 20)]
     ping_count: u32,
 }
@@ -63,8 +60,7 @@ async fn main() -> anyhow::Result<()> {
             match res {
                 Ok(result) => {
                     if args.json {
-                        let json_out = serde_json::to_string_pretty(&result)?;
-                        println!("{}", json_out);
+                        println!("{}", serde_json::to_string_pretty(&result)?);
                     }
                 }
                 Err(e) => {
@@ -91,7 +87,8 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn run_app(args: Args, client: Client) -> anyhow::Result<SpeedTestResult> {
-    let quiet = args.json;
+    // CHANGED: build AppConfig once here — no more quiet: bool passed everywhere
+    let config = Arc::new(AppConfig { quiet: args.json });
 
     if args.duration <= WARMUP_SECS as u64 {
         anyhow::bail!(
@@ -101,58 +98,82 @@ async fn run_app(args: Args, client: Client) -> anyhow::Result<SpeedTestResult> 
         );
     }
 
-    if !quiet {
+    if args.ping_count == 0 {
+        anyhow::bail!("--ping-count must be at least 1");
+    }
+
+    if !config.quiet {
         println!("🚀 Starting Rust Speedtest...\n");
     }
 
-    // Single server — Cloudflare anycast routes to the nearest edge automatically
     let server = Server {
         name: "Cloudflare".into(),
         base_url: "https://speed.cloudflare.com".into(),
     };
 
-    if !quiet {
+    if !config.quiet {
         println!("🔍 Using server: {}\n", server.name);
     }
 
-    // --- Ping / Jitter / Packet Loss ---
-    let ping_stats = test_ping_stats(&client, &server.base_url, args.ping_count, quiet).await?;
+    // CHANGED: pass Arc::clone(&config) instead of quiet
+    let ping_stats = test_ping_stats(
+        &client,
+        &server.base_url,
+        args.ping_count,
+        Arc::clone(&config),
+    )
+    .await?;
 
-    // --- Download ---
     let down_connections = args.connections.unwrap_or(8);
     let down_speed = test_download(
         &client,
         &server.base_url,
         args.duration,
         down_connections,
-        quiet,
-    ).await?;
+        Arc::clone(&config),
+    )
+    .await?;
 
-    // --- Upload ---
+    if !config.quiet {
+        println!("⬇️  Download Speed: {:.2} Mbps\n", down_speed);
+    }
+
     let up_connections = args.connections.unwrap_or(4);
     let up_speed = test_upload(
         &client,
         &server.base_url,
         args.duration,
         up_connections,
-        quiet,
-    ).await?;
+        Arc::clone(&config),
+    )
+    .await?;
 
-    // --- Summary ---
-    if !quiet {
-        println!();
+    if !config.quiet {
+        println!("⬆️  Upload Speed: {:.2} Mbps\n", up_speed);
         println!("╔══════════════════════════════════════╗");
         println!("║           📊 Test Summary            ║");
         println!("╠══════════════════════════════════════╣");
         println!("║  Server     : {:<23}║", server.name);
         println!("╠══════════════════════════════════════╣");
-        println!("║  Ping       : {:<20} ms ║", format!("{:.1}", ping_stats.avg_ms));
-        println!("║  Jitter     : {:<20} ms ║", format!("{:.2}", ping_stats.jitter_ms));
+        println!(
+            "║  Ping       : {:<20} ms ║",
+            format!("{:.1}", ping_stats.avg_ms)
+        );
+        println!(
+            "║  Jitter     : {:<20} ms ║",
+            format!("{:.2}", ping_stats.jitter_ms)
+        );
         println!("║  Min Ping   : {:<20} ms ║", ping_stats.min_ms);
         println!("║  Max Ping   : {:<20} ms ║", ping_stats.max_ms);
-        println!("║  Packet Loss: {:<19} %  ║", format!("{:.1}", ping_stats.packet_loss_pct));
+        println!(
+            "║  Packet Loss: {:<19} %  ║",
+            format!("{:.1}", ping_stats.packet_loss_pct)
+        );
         println!("╠══════════════════════════════════════╣");
-        println!("║  Download   : {:<18} Mbps ║", format!("{:.2}", down_speed));
+        println!(
+            "║  Download   : {:<18} Mbps ║",
+            format!("{:.2}", down_speed)
+        );
         println!("║  Upload     : {:<18} Mbps ║", format!("{:.2}", up_speed));
         println!("╚══════════════════════════════════════╝");
     }
