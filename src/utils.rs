@@ -132,7 +132,7 @@ mod tests {
         let attempts = Arc::new(AtomicU32::new(0));
         let attempts_c = attempts.clone();
 
-        let result = with_retry(2, move || {
+        let result: anyhow::Result<()> = with_retry(2, move || {
             let counter = attempts_c.clone();
             async move {
                 counter.fetch_add(1, Ordering::SeqCst);
@@ -155,7 +155,7 @@ mod tests {
         let attempts = Arc::new(AtomicU32::new(0));
         let attempts_c = attempts.clone();
 
-        let result = with_retry(0, move || {
+        let result: anyhow::Result<()> = with_retry(0, move || {
             let counter = attempts_c.clone();
             async move {
                 counter.fetch_add(1, Ordering::SeqCst);
