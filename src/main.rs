@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::debug;
 
-use speedtest::models::{AppConfig, RunArgs};
+use cli_speedtest::models::{AppConfig, RunArgs};
 
 const CONNECT_TIMEOUT_SECS: u64 = 10;
 const REQUEST_TIMEOUT_SECS: u64 = 30;
@@ -98,7 +98,7 @@ async fn main() -> anyhow::Result<()> {
     let show_menu = is_tty && !has_flags && !args.json;
 
     if show_menu {
-        speedtest::menu::run_menu(config, client).await?;
+        cli_speedtest::menu::run_menu(config, client).await?;
     } else {
         tokio::select! {
             res = run_app(args.clone(), client, config) => {
@@ -136,7 +136,7 @@ async fn run_app(
     args: Args,
     client: Client,
     config: Arc<AppConfig>,
-) -> anyhow::Result<speedtest::models::SpeedTestResult> {
+) -> anyhow::Result<cli_speedtest::models::SpeedTestResult> {
     if !config.quiet {
         println!("🚀 Starting Rust Speedtest...\n");
     }
@@ -151,5 +151,5 @@ async fn run_app(
         no_upload: args.no_upload,
     };
 
-    speedtest::run(run_args, config, client).await
+    cli_speedtest::run(run_args, config, client).await
 }
