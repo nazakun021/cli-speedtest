@@ -8,13 +8,13 @@
 // `duration_secs` (3s) because the CancellationToken sleep drives the test window.
 // This is expected and correct behaviour for integration tests.
 
-use mockito::Matcher;
-use reqwest::Client;
 use cli_speedtest::{
     client::{test_download, test_ping_stats, test_upload},
     models::{AppConfig, RunArgs},
     utils::calculate_mbps,
 };
+use mockito::Matcher;
+use reqwest::Client;
 use std::sync::Arc;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
