@@ -8,11 +8,16 @@ A blazing-fast, high-performance CLI speedtest tool written in Rust. Designed fo
 
 - **Interactive Menu**: User-friendly TTY menu for quick tests, settings, and help.
 - **Blazing Fast**: Powered by `tokio` for asynchronous, non-blocking I/O.
-- **High Concurrency**: Multi-threaded download and upload tests to saturate high-speed connections.
+- **High Concurrency**: Multi-threaded download and upload tests using `tokio` tasks and `Barrier` synchronization to saturate high-speed connections.
+- **Production Grade**: 
+  - **Warm-up Phase**: Includes a 2-second warm-up period to avoid TCP slow-start bias for more consistent results.
+  - **Retry Logic**: Built-in exponential backoff for failed network requests.
+- **Comprehensive Metrics**: 
+  - **Latency**: Min, Max, Average, Jitter, and Packet Loss.
+  - **Throughput**: Real-time Mbps for both Download and Upload.
 - **Visual Polish**: Semantic color-coding and live rolling-speed displays.
 - **Machine-Readable**: Use the `--json` flag for clean, parseable output perfect for cron jobs and monitoring.
-- **Production Grade**: Time-bound testing architecture with warm-up windows for consistent results.
-- **Graceful Degradation**: Automatically disables color and interactive features when piped or in non-TTY environments.
+- **Graceful Degradation**: Automatically disables color and interactive features when piped or in non-TTY environments. Respects the `NO_COLOR` environment variable.
 
 ## 🛠️ Installation
 
@@ -37,27 +42,48 @@ cargo run
 
 ### Direct Run (Scripting Friendly)
 Pass any configuration flag to bypass the menu and run directly:
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-d, --duration <SECS>` | Length of the test in seconds | `10` |
+| `-c, --connections <N>` | Number of parallel connections | `8` (DL), `4` (UL) |
+| `--server <URL>` | Custom target server URL | Cloudflare |
+| `--ping-count <N>` | Number of pings to send | `20` |
+| `--no-download` | Skip the download test | - |
+| `--no-upload` | Skip the upload test | - |
+| `--json` | Output results in JSON format | - |
+| `--no-color` | Disable terminal styling | - |
+| `--debug` | Enable verbose logging | - |
+
+### Examples
 ```zsh
 # Run a 5-second test with 12 connections
 cargo run -- --duration 5 --connections 12
-```
 
-### JSON Output
-For automation and scripts, suppress the UI and get a clean JSON string:
-```zsh
-cargo run -- --json
-```
-
-### Advanced Options
-```zsh
-# Skip upload test
-cargo run -- --no-upload
+# Skip upload test and get JSON output
+cargo run -- --no-upload --json
 
 # Use a custom server
 cargo run -- --server https://your-custom-speedtest-server.com
+```
 
-# Disable all color output
-cargo run -- --no-color
+## 📊 JSON Output Schema
+When running with `--json`, the tool returns a structured object:
+```json
+{
+  "timestamp": "2026-04-05T12:00:00Z",
+  "version": "0.1.0",
+  "server_name": "Cloudflare",
+  "ping": {
+    "min_ms": 10.5,
+    "max_ms": 25.2,
+    "avg_ms": 15.1,
+    "jitter_ms": 2.3,
+    "packet_loss_pct": 0.0
+  },
+  "download_mbps": 450.2,
+  "upload_mbps": 120.5
+}
 ```
 
 ## 🧪 Testing
@@ -70,10 +96,12 @@ cargo test
 
 ## 🏗️ Project Structure
 
-- `src/main.rs`: Entry point and CLI routing logic.
-- `src/menu.rs`: Interactive TTY menu and settings.
-- `src/lib.rs`: Core orchestration logic.
-- `src/client.rs`: Async networking and measurement tasks.
+- `src/main.rs`: Entry point and CLI routing logic using `clap`.
+- `src/lib.rs`: Core orchestration logic for ping, download, and upload phases.
+- `src/client.rs`: High-concurrency networking implementation using `tokio` and `reqwest`.
+- `src/menu.rs`: Interactive TTY menu and settings using `dialoguer`.
+- `src/models.rs`: Data structures and JSON serialization models.
+- `src/utils.rs`: Technical constants (like `WARMUP_SECS`) and measurement math.
 - `src/theme.rs`: ANSI color system and UI rendering helpers.
 
 ## 🤝 Contributing

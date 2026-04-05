@@ -88,11 +88,6 @@ The ordering matters: **P2-2 (live speed)** is marked high because it's the most
 
 ---
 
-This week:
-  1. Fix tokio-util feature flag ("rt" → "sync")
-  2. Add CI pipeline (.github/workflows/ci.yml)
-  3. Write README
-
 Next week:
   4. Rustdoc + #![warn(missing_docs)]
   5. Custom server validation (Phase 3 starter)
