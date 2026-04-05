@@ -1,9 +1,11 @@
+# .github/workflows/release.yml
+
 name: Release
 
 on:
   push:
     tags:
-      - "v*.*.*" # Triggers when you push a tag like v1.0.0
+      - "v*.*.*"
 
 jobs:
   build-and-release:
@@ -16,18 +18,25 @@ jobs:
             target: x86_64-unknown-linux-gnu
             artifact_name: rust_speedtest
             asset_name: rust_speedtest-linux-amd64
+
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact_name: rust_speedtest.exe
             asset_name: rust_speedtest-windows-amd64.exe
+
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact_name: rust_speedtest
             asset_name: rust_speedtest-macos-intel
 
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: rust_speedtest
+            asset_name: rust_speedtest-macos-arm64
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
