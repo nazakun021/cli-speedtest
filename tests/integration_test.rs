@@ -8,13 +8,13 @@
 // `duration_secs` (3s) because the CancellationToken sleep drives the test window.
 // This is expected and correct behaviour for integration tests.
 
-use cli_speedtest::{
+use mockito::Matcher;
+use reqwest::Client;
+use speedtest::{
     client::{test_download, test_ping_stats, test_upload},
     models::{AppConfig, RunArgs},
     utils::calculate_mbps,
 };
-use mockito::Matcher;
-use reqwest::Client;
 use std::sync::Arc;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -178,7 +178,7 @@ async fn no_download_flag_skips_download_and_returns_none() {
         .create_async()
         .await;
 
-    let result = cli_speedtest::run(
+    let result = speedtest::run(
         RunArgs {
             server_url: server.url(),
             duration_secs: TEST_DURATION_SECS,
@@ -232,7 +232,7 @@ async fn no_upload_flag_skips_upload_and_returns_none() {
         .create_async()
         .await;
 
-    let result = cli_speedtest::run(
+    let result = speedtest::run(
         RunArgs {
             server_url: server.url(),
             duration_secs: TEST_DURATION_SECS,
@@ -270,7 +270,7 @@ async fn both_no_flags_skips_both_tests() {
         .create_async()
         .await;
 
-    let result = cli_speedtest::run(
+    let result = speedtest::run(
         RunArgs {
             server_url: server.url(),
             duration_secs: TEST_DURATION_SECS,
@@ -317,7 +317,7 @@ async fn custom_server_url_is_used_and_reflected_in_result() {
 
     let custom_url = server.url(); // e.g. "http://127.0.0.1:PORT"
 
-    let result = cli_speedtest::run(
+    let result = speedtest::run(
         RunArgs {
             server_url: custom_url.clone(),
             duration_secs: TEST_DURATION_SECS,
@@ -348,7 +348,7 @@ async fn custom_server_url_is_used_and_reflected_in_result() {
 #[tokio::test]
 async fn duration_equal_to_warmup_is_rejected() {
     // WARMUP_SECS = 2.0, so duration = 2 must fail validation
-    let result = cli_speedtest::run(
+    let result = speedtest::run(
         RunArgs {
             server_url: "https://speed.cloudflare.com".into(),
             duration_secs: 2,
@@ -371,7 +371,7 @@ async fn duration_equal_to_warmup_is_rejected() {
 
 #[tokio::test]
 async fn zero_ping_count_is_rejected() {
-    let result = cli_speedtest::run(
+    let result = speedtest::run(
         RunArgs {
             server_url: "https://speed.cloudflare.com".into(),
             duration_secs: 10,
