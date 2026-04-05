@@ -93,9 +93,9 @@ pub fn speed_rating(mbps: f64, config: &AppConfig) -> String {
 }
 
 /// Returns the visible (printed) length of a string by stripping ANSI codes first.
-/// Uses console::strip_ansi_codes which handles all standard SGR sequences.
+/// Uses console::measure_text_width which correctly handles multi-column Unicode characters.
 pub fn visible_len(s: &str) -> usize {
-    console::strip_ansi_codes(s).chars().count()
+    console::measure_text_width(s)
 }
 
 /// Right-pads `s` with spaces so its *visible* width equals `width`.

@@ -182,22 +182,57 @@ fn show_settings(settings: &mut MenuSettings, _config: &AppConfig) -> anyhow::Re
 
 fn show_commands(_config: &AppConfig) {
     clear_screen();
-    println!("  ┌─────────────────────────────────────────────────────────┐");
-    println!("  │  📋  Available Commands                                  │");
-    println!("  ├─────────────────────────────────────────────────────────┤");
-    println!("  │  -d, --duration <SECS>       Test duration (default: 10) │");
-    println!("  │  -c, --connections <N>       Parallel connections         │");
-    println!("  │      --server <URL>          Custom server base URL       │");
-    println!("  │      --no-download           Skip download test           │");
-    println!("  │      --no-upload             Skip upload test             │");
-    println!("  │      --ping-count <N>        Ping probes (default: 20)    │");
-    println!("  │      --json                  Output results as JSON       │");
-    println!("  │      --no-color              Disable color output         │");
-    println!("  │      --debug                 Enable debug logging         │");
-    println!("  ├─────────────────────────────────────────────────────────┤");
-    println!("  │  Example:  cli-speedtest --duration 20 --connections 12  │");
-    println!("  │  Example:  cli-speedtest --json | jq .download_mbps      │");
-    println!("  └─────────────────────────────────────────────────────────┘");
+    let w = 58;
+    let inner_w = w - 2;
+    println!("  ┌{}┐", "─".repeat(w));
+    println!("  │ {} │", pad_to("📋 Available Commands", inner_w));
+    println!("  ├{}┤", "─".repeat(w));
+    println!(
+        "  │ {} │",
+        pad_to("-d, --duration <SECS>       Test duration (default: 10)", inner_w)
+    );
+    println!(
+        "  │ {} │",
+        pad_to("-c, --connections <N>       Parallel connections", inner_w)
+    );
+    println!(
+        "  │ {} │",
+        pad_to("    --server <URL>          Custom server base URL", inner_w)
+    );
+    println!(
+        "  │ {} │",
+        pad_to("    --no-download           Skip download test", inner_w)
+    );
+    println!(
+        "  │ {} │",
+        pad_to("    --no-upload             Skip upload test", inner_w)
+    );
+    println!(
+        "  │ {} │",
+        pad_to("    --ping-count <N>        Ping probes (default: 20)", inner_w)
+    );
+    println!(
+        "  │ {} │",
+        pad_to("    --json                  Output results as JSON", inner_w)
+    );
+    println!(
+        "  │ {} │",
+        pad_to("    --no-color              Disable color output", inner_w)
+    );
+    println!(
+        "  │ {} │",
+        pad_to("    --debug                 Enable debug logging", inner_w)
+    );
+    println!("  ├{}┤", "─".repeat(w));
+    println!(
+        "  │ {} │",
+        pad_to("Example:  cli-speedtest --duration 20 --connections 12", inner_w)
+    );
+    println!(
+        "  │ {} │",
+        pad_to("Example:  cli-speedtest --json | jq .download_mbps", inner_w)
+    );
+    println!("  └{}┘", "─".repeat(w));
     println!("\n  Press Enter to return…");
     wait_for_enter();
 }
@@ -209,77 +244,102 @@ fn show_help(config: &AppConfig) {
         color: config.color,
     };
 
-    println!("  ┌─────────────────────────────────────────────────────────┐");
-    println!("  │  ❓  Interpreting Your Results                           │");
-    println!("  ├─────────────────────────────────────────────────────────┤");
-    println!("  │  SPEED                                                   │");
+    let w = 58;
+    let inner_w = w - 2;
+    println!("  ┌{}┐", "─".repeat(w));
+    println!("  │ {} │", pad_to("❓ Interpreting Your Results", inner_w));
+    println!("  ├{}┤", "─".repeat(w));
+    println!("  │ {} │", pad_to("SPEED", inner_w));
     println!(
-        "  │    ≥ 500 Mbps  {} Excellent — fiber / high-end cable",
-        pad_to("", 0)
-    );
-    println!("  │    100–499     Great     — HD streaming, fast downloads  │");
-    println!("  │     25–99      Good      — video calls, light streaming  │");
-    println!("  │      5–24      Fair      — basic browsing, email         │");
-    println!("  │       < 5      Poor      — may struggle with modern web  │");
-    println!("  ├─────────────────────────────────────────────────────────┤");
-    println!("  │  PING                                                    │");
-    println!("  │    ≤  20 ms   Excellent — real-time gaming, VoIP         │");
-    println!("  │    21–80 ms   Good      — video calls, general use       │");
-    println!("  │    > 80 ms    High      — noticeable in latency-sensitive │");
-    println!("  │               applications                               │");
-    println!("  ├─────────────────────────────────────────────────────────┤");
-    println!("  │  JITTER  (variation in ping)                             │");
-    println!("  │    ≤  5 ms   Stable — voice/video calls unaffected       │");
-    println!("  │    6–20 ms   Moderate — occasional stutter possible      │");
-    println!("  │    > 20 ms   Unstable — real-time apps will be impacted  │");
-    println!("  ├─────────────────────────────────────────────────────────┤");
-    println!("  │  PACKET LOSS                                             │");
-    println!("  │    0.0%      Ideal — no retransmission overhead          │");
-    println!("  │    > 0.0%    Lossy — investigate ISP or local network    │");
-    println!("  └─────────────────────────────────────────────────────────┘");
-
-    // Re-rendering with actual ratings to show colors if enabled
-    clear_screen();
-    println!("  ┌─────────────────────────────────────────────────────────┐");
-    println!("  │  ❓  Interpreting Your Results                           │");
-    println!("  ├─────────────────────────────────────────────────────────┤");
-    println!("  │  SPEED                                                   │");
-    println!(
-        "  │    ≥ 500 Mbps  {} — fiber / high-end cable",
-        pad_to(&speed_rating(500.0, &mock_conf), 10)
+        "  │ {} │",
+        pad_to(
+            &format!(
+                "  ≥ 500 Mbps  {} — fiber / high-end cable",
+                speed_rating(500.0, &mock_conf)
+            ),
+            inner_w
+        )
     );
     println!(
-        "  │    100–499     {} — HD streaming, fast downloads  ",
-        pad_to(&speed_rating(100.0, &mock_conf), 10)
+        "  │ {} │",
+        pad_to(
+            &format!(
+                "  100–499     {} — HD streaming, fast downloads",
+                speed_rating(100.0, &mock_conf)
+            ),
+            inner_w
+        )
     );
     println!(
-        "  │     25–99      {} — video calls, light streaming  ",
-        pad_to(&speed_rating(25.0, &mock_conf), 10)
+        "  │ {} │",
+        pad_to(
+            &format!(
+                "   25–99      {} — video calls, light streaming",
+                speed_rating(25.0, &mock_conf)
+            ),
+            inner_w
+        )
     );
     println!(
-        "  │      5–24      {} — basic browsing, email         ",
-        pad_to(&speed_rating(5.0, &mock_conf), 10)
+        "  │ {} │",
+        pad_to(
+            &format!(
+                "    5–24      {} — basic browsing, email",
+                speed_rating(5.0, &mock_conf)
+            ),
+            inner_w
+        )
     );
     println!(
-        "  │       < 5      {} — may struggle with modern web  ",
-        pad_to(&speed_rating(0.0, &mock_conf), 10)
+        "  │ {} │",
+        pad_to(
+            &format!(
+                "     < 5      {} — may struggle with modern web",
+                speed_rating(0.0, &mock_conf)
+            ),
+            inner_w
+        )
     );
-    println!("  ├─────────────────────────────────────────────────────────┤");
-    println!("  │  PING                                                    │");
-    println!("  │    ≤  20 ms   Excellent — real-time gaming, VoIP         │");
-    println!("  │    21–80 ms   Good      — video calls, general use       │");
-    println!("  │    > 80 ms    High      — noticeable in latency-sensitive │");
-    println!("  │               applications                               │");
-    println!("  ├─────────────────────────────────────────────────────────┤");
-    println!("  │  JITTER  (variation in ping)                             │");
-    println!("  │    ≤  5 ms   Stable — voice/video calls unaffected       │");
-    println!("  │    6–20 ms   Moderate — occasional stutter possible      │");
-    println!("  │    > 20 ms   Unstable — real-time apps will be impacted  │");
-    println!("  ├─────────────────────────────────────────────────────────┤");
-    println!("  │  PACKET LOSS                                             │");
-    println!("  │    0.0%      Ideal — no retransmission overhead          │");
-    println!("  │    > 0.0%    Lossy — investigate ISP or local network    │");
-    println!("  └─────────────────────────────────────────────────────────┘");
+    println!("  ├{}┤", "─".repeat(w));
+    println!("  │ {} │", pad_to("PING", inner_w));
+    println!(
+        "  │ {} │",
+        pad_to("  ≤  20 ms   Excellent — real-time gaming, VoIP", inner_w)
+    );
+    println!(
+        "  │ {} │",
+        pad_to("  21–80 ms   Good      — video calls, general use", inner_w)
+    );
+    println!(
+        "  │ {} │",
+        pad_to("  > 80 ms    High      — noticeable in latency-sensitive", inner_w)
+    );
+    println!("  │ {} │", pad_to("             applications", inner_w));
+    println!("  ├{}┤", "─".repeat(w));
+    println!("  │ {} │", pad_to("JITTER  (variation in ping)", inner_w));
+    println!(
+        "  │ {} │",
+        pad_to("  ≤  5 ms   Stable — voice/video calls unaffected", inner_w)
+    );
+    println!(
+        "  │ {} │",
+        pad_to("  6–20 ms   Moderate — occasional stutter possible", inner_w)
+    );
+    println!(
+        "  │ {} │",
+        pad_to("  > 20 ms   Unstable — real-time apps will be impacted", inner_w)
+    );
+    println!("  ├{}┤", "─".repeat(w));
+    println!("  │ {} │", pad_to("PACKET LOSS", inner_w));
+    println!(
+        "  │ {} │",
+        pad_to("  0.0%      Ideal — no retransmission overhead", inner_w)
+    );
+    println!(
+        "  │ {} │",
+        pad_to("  > 0.0%    Lossy — investigate ISP or local network", inner_w)
+    );
+    println!("  └{}┘", "─".repeat(w));
 
     println!("\n  Press Enter to return…");
     wait_for_enter();
