@@ -34,6 +34,7 @@ You can directly download and install the latest pre-compiled binaries from the 
 ```bash
 curl -L https://github.com/nazakun021/cli-speedtest/releases/latest/download/speedtest-linux-amd64 -o cli-speedtest
 chmod +x cli-speedtest
+sudo mkdir -p /usr/local/bin
 sudo mv cli-speedtest /usr/local/bin/
 ```
 
@@ -41,6 +42,7 @@ sudo mv cli-speedtest /usr/local/bin/
 ```bash
 curl -L https://github.com/nazakun021/cli-speedtest/releases/latest/download/speedtest-macos-arm64 -o cli-speedtest
 chmod +x cli-speedtest
+sudo mkdir -p /usr/local/bin
 sudo mv cli-speedtest /usr/local/bin/
 ```
 
@@ -48,8 +50,13 @@ sudo mv cli-speedtest /usr/local/bin/
 ```bash
 curl -L https://github.com/nazakun021/cli-speedtest/releases/latest/download/speedtest-macos-intel -o cli-speedtest
 chmod +x cli-speedtest
+sudo mkdir -p /usr/local/bin
 sudo mv cli-speedtest /usr/local/bin/
 ```
+
+> **Note for macOS Users**: If you get a "command not found" error, ensure `/usr/local/bin` is in your `$PATH`. 
+> If macOS prevents the binary from running due to an "Unidentified Developer" warning (Gatekeeper), run: 
+> `sudo xattr -d com.apple.quarantine /usr/local/bin/cli-speedtest`
 
 **Windows (PowerShell):**
 ```powershell
