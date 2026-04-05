@@ -189,7 +189,10 @@ fn show_commands(_config: &AppConfig) {
     println!("  ├{}┤", "─".repeat(w));
     println!(
         "  │ {} │",
-        pad_to("-d, --duration <SECS>       Test duration (default: 10)", inner_w)
+        pad_to(
+            "-d, --duration <SECS>       Test duration (default: 10)",
+            inner_w
+        )
     );
     println!(
         "  │ {} │",
@@ -197,7 +200,10 @@ fn show_commands(_config: &AppConfig) {
     );
     println!(
         "  │ {} │",
-        pad_to("    --server <URL>          Custom server base URL", inner_w)
+        pad_to(
+            "    --server <URL>          Custom server base URL",
+            inner_w
+        )
     );
     println!(
         "  │ {} │",
@@ -209,11 +215,17 @@ fn show_commands(_config: &AppConfig) {
     );
     println!(
         "  │ {} │",
-        pad_to("    --ping-count <N>        Ping probes (default: 20)", inner_w)
+        pad_to(
+            "    --ping-count <N>        Ping probes (default: 20)",
+            inner_w
+        )
     );
     println!(
         "  │ {} │",
-        pad_to("    --json                  Output results as JSON", inner_w)
+        pad_to(
+            "    --json                  Output results as JSON",
+            inner_w
+        )
     );
     println!(
         "  │ {} │",
@@ -226,11 +238,17 @@ fn show_commands(_config: &AppConfig) {
     println!("  ├{}┤", "─".repeat(w));
     println!(
         "  │ {} │",
-        pad_to("Example:  cli-speedtest --duration 20 --connections 12", inner_w)
+        pad_to(
+            "Example:  cli-speedtest --duration 20 --connections 12",
+            inner_w
+        )
     );
     println!(
         "  │ {} │",
-        pad_to("Example:  cli-speedtest --json | jq .download_mbps", inner_w)
+        pad_to(
+            "Example:  cli-speedtest --json | jq .download_mbps",
+            inner_w
+        )
     );
     println!("  └{}┘", "─".repeat(w));
     println!("\n  Press Enter to return…");
@@ -312,7 +330,10 @@ fn show_help(config: &AppConfig) {
     );
     println!(
         "  │ {} │",
-        pad_to("  > 80 ms    High      — noticeable in latency-sensitive", inner_w)
+        pad_to(
+            "  > 80 ms    High      — noticeable in latency-sensitive",
+            inner_w
+        )
     );
     println!("  │ {} │", pad_to("             applications", inner_w));
     println!("  ├{}┤", "─".repeat(w));
@@ -323,11 +344,17 @@ fn show_help(config: &AppConfig) {
     );
     println!(
         "  │ {} │",
-        pad_to("  6–20 ms   Moderate — occasional stutter possible", inner_w)
+        pad_to(
+            "  6–20 ms   Moderate — occasional stutter possible",
+            inner_w
+        )
     );
     println!(
         "  │ {} │",
-        pad_to("  > 20 ms   Unstable — real-time apps will be impacted", inner_w)
+        pad_to(
+            "  > 20 ms   Unstable — real-time apps will be impacted",
+            inner_w
+        )
     );
     println!("  ├{}┤", "─".repeat(w));
     println!("  │ {} │", pad_to("PACKET LOSS", inner_w));
@@ -337,7 +364,10 @@ fn show_help(config: &AppConfig) {
     );
     println!(
         "  │ {} │",
-        pad_to("  > 0.0%    Lossy — investigate ISP or local network", inner_w)
+        pad_to(
+            "  > 0.0%    Lossy — investigate ISP or local network",
+            inner_w
+        )
     );
     println!("  └{}┘", "─".repeat(w));
 
