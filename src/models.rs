@@ -48,3 +48,23 @@ pub struct Server {
     pub name: String,
     pub base_url: String,
 }
+
+/// Interactive menu settings state
+#[derive(Debug, Clone)]
+pub struct MenuSettings {
+    pub duration_secs: u64, // default: 10
+    pub connections: usize, // default: 8
+    pub ping_count: u32,    // default: 20
+    pub color: bool,        // default: true
+}
+
+impl Default for MenuSettings {
+    fn default() -> Self {
+        Self {
+            duration_secs: 10,
+            connections: 8,
+            ping_count: 20,
+            color: true,
+        }
+    }
+}

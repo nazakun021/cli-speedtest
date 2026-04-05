@@ -6,12 +6,13 @@ A blazing-fast, high-performance CLI speedtest tool written in Rust. Designed fo
 
 ## ✨ Features
 
+- **Interactive Menu**: User-friendly TTY menu for quick tests, settings, and help.
 - **Blazing Fast**: Powered by `tokio` for asynchronous, non-blocking I/O.
 - **High Concurrency**: Multi-threaded download and upload tests to saturate high-speed connections.
+- **Visual Polish**: Semantic color-coding and live rolling-speed displays.
 - **Machine-Readable**: Use the `--json` flag for clean, parseable output perfect for cron jobs and monitoring.
-- **Debugging**: Built-in `tracing` support with the `--debug` flag for troubleshooting.
-- **Production Grade**: Time-bound testing architecture ensures consistent result reporting.
-- **CI/CD Ready**: Automatic cross-platform releases for Linux, Windows, and macOS via GitHub Actions.
+- **Production Grade**: Time-bound testing architecture with warm-up windows for consistent results.
+- **Graceful Degradation**: Automatically disables color and interactive features when piped or in non-TTY environments.
 
 ## 🛠️ Installation
 
@@ -28,10 +29,17 @@ The binary will be available at `target/release/cli-speedtest`.
 
 ## 🚀 Usage
 
-### Simple Test
-Run a standard speedtest with visual progress bars:
+### Interactive Mode
+Simply run the binary without flags to enter the interactive menu:
 ```zsh
 cargo run
+```
+
+### Direct Run (Scripting Friendly)
+Pass any configuration flag to bypass the menu and run directly:
+```zsh
+# Run a 5-second test with 12 connections
+cargo run -- --duration 5 --connections 12
 ```
 
 ### JSON Output
@@ -42,16 +50,19 @@ cargo run -- --json
 
 ### Advanced Options
 ```zsh
-# Change test duration (default: 10s)
-cargo run -- --duration 5
+# Skip upload test
+cargo run -- --no-upload
 
-# Enable debug logging (emitted to stderr)
-cargo run -- --debug
+# Use a custom server
+cargo run -- --server https://your-custom-speedtest-server.com
+
+# Disable all color output
+cargo run -- --no-color
 ```
 
 ## 🧪 Testing
 
-The project includes pure function unit tests for performance calculations.
+The project includes unit tests for core logic and integration tests using mock servers.
 
 ```zsh
 cargo test
@@ -59,9 +70,11 @@ cargo test
 
 ## 🏗️ Project Structure
 
-- `src/main.rs`: Core logic, including async tasks for networking and progress management.
-- `Cargo.toml`: Project metadata and dependencies (reqwest, tokio, clap, etc.).
-- `.github/workflows/release.yml`: Automated build and release pipeline.
+- `src/main.rs`: Entry point and CLI routing logic.
+- `src/menu.rs`: Interactive TTY menu and settings.
+- `src/lib.rs`: Core orchestration logic.
+- `src/client.rs`: Async networking and measurement tasks.
+- `src/theme.rs`: ANSI color system and UI rendering helpers.
 
 ## 🤝 Contributing
 
@@ -69,7 +82,7 @@ Feel free to open issues or submit pull requests to improve the tool!
 
 ## 📜 License
 
-[Add License Info Here - e.g., MIT]
+Distributed under the Apache License 2.0. See `LICENSE` for more information.
 
 ---
 Built with ❤️ by [Tirso Benedict J. Naza](https://github.com/nazakun021)

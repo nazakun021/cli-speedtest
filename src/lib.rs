@@ -1,6 +1,7 @@
 // src/lib.rs
 
 pub mod client;
+pub mod menu;
 pub mod models;
 pub mod theme;
 pub mod utils;
@@ -115,10 +116,9 @@ pub async fn run(
         let server_val_width = inner_width - server_label.len() - 1;
         let truncated_server = theme::truncate_to(&server.name, server_val_width);
         println!(
-            "║{}{:<width$} ║",
+            "║{}{} ║",
             server_label,
-            truncated_server,
-            width = server_val_width
+            theme::pad_to(&truncated_server, server_val_width),
         );
 
         println!("╠{}╣", "═".repeat(inner_width));
@@ -143,7 +143,7 @@ pub async fn run(
 
         for (label, val) in labels {
             let val_width = inner_width - label.len() - 1;
-            println!("║{}{:<width$} ║", label, val, width = val_width);
+            println!("║{}{} ║", label, theme::pad_to(&val, val_width));
         }
 
         println!("╠{}╣", "═".repeat(inner_width));
@@ -156,12 +156,12 @@ pub async fn run(
                 let rating = theme::speed_rating(s, &config);
                 let combined = format!("{}  {}", speed_str, rating);
                 let val_width = inner_width - label.len() - 1;
-                println!("║{}{:<width$} ║", label, combined, width = val_width);
+                println!("║{}{} ║", label, theme::pad_to(&combined, val_width));
             }
             None => {
                 let label = "  Download   : ";
                 let val_width = inner_width - label.len() - 1;
-                println!("║{}{:<width$} ║", label, "skipped", width = val_width);
+                println!("║{}{} ║", label, theme::pad_to("skipped", val_width));
             }
         }
 
@@ -173,12 +173,12 @@ pub async fn run(
                 let rating = theme::speed_rating(s, &config);
                 let combined = format!("{}  {}", speed_str, rating);
                 let val_width = inner_width - label.len() - 1;
-                println!("║{}{:<width$} ║", label, combined, width = val_width);
+                println!("║{}{} ║", label, theme::pad_to(&combined, val_width));
             }
             None => {
                 let label = "  Upload     : ";
                 let val_width = inner_width - label.len() - 1;
-                println!("║{}{:<width$} ║", label, "skipped", width = val_width);
+                println!("║{}{} ║", label, theme::pad_to("skipped", val_width));
             }
         }
 

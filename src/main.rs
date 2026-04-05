@@ -10,6 +10,7 @@ use cli_speedtest::models::{AppConfig, RunArgs};
 
 const CONNECT_TIMEOUT_SECS: u64 = 10;
 const REQUEST_TIMEOUT_SECS: u64 = 30;
+const DEFAULT_SERVER_URL: &str = "https://speed.cloudflare.com";
 
 /// A blazing fast CLI Speedtest written in Rust
 #[derive(Parser, Debug, Clone)]
@@ -25,7 +26,7 @@ struct Args {
     connections: Option<usize>,
 
     /// Custom server base URL — must expose /__down, /__up, and /cdn-cgi/trace
-    #[arg(long, default_value = "https://speed.cloudflare.com")]
+    #[arg(long, default_value = DEFAULT_SERVER_URL)]
     server: String,
 
     /// Skip the download test
@@ -53,6 +54,19 @@ struct Args {
     no_color: bool,
 }
 
+impl Args {
+    /// Returns true if the user passed any flag that customises run behaviour.
+    /// Used to decide whether to show the interactive menu.
+    fn has_any_action_flags(&self) -> bool {
+        self.no_download
+            || self.no_upload
+            || self.server != DEFAULT_SERVER_URL
+            || self.connections.is_some()
+            || self.duration != 10
+            || self.ping_count != 20
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
@@ -71,31 +85,47 @@ async fn main() -> anyhow::Result<()> {
         .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
         .build()?;
 
-    tokio::select! {
-        res = run_app(args.clone(), client) => {
-            match res {
-                Ok(result) => {
-                    if args.json {
-                        println!("{}", serde_json::to_string_pretty(&result)?);
+    let color_enabled =
+        !args.no_color && std::env::var("NO_COLOR").is_err() && console::Term::stdout().is_term();
+
+    let config = Arc::new(AppConfig {
+        quiet: args.json,
+        color: color_enabled,
+    });
+
+    let is_tty = console::Term::stdout().is_term();
+    let has_flags = args.has_any_action_flags();
+    let show_menu = is_tty && !has_flags && !args.json;
+
+    if show_menu {
+        cli_speedtest::menu::run_menu(config, client).await?;
+    } else {
+        tokio::select! {
+            res = run_app(args.clone(), client, config) => {
+                match res {
+                    Ok(result) => {
+                        if args.json {
+                            println!("{}", serde_json::to_string_pretty(&result)?);
+                        }
                     }
-                }
-                Err(e) => {
-                    if args.json {
-                        println!(r#"{{"error": "{}"}}"#, e);
-                    } else {
-                        eprintln!("❌ Error: {}", e);
+                    Err(e) => {
+                        if args.json {
+                            println!(r#"{{"error": "{}"}}"#, e);
+                        } else {
+                            eprintln!("❌ Error: {}", e);
+                        }
                     }
                 }
             }
-        }
-        _ = tokio::signal::ctrl_c() => {
-            if args.json {
-                println!(r#"{{"error": "aborted_by_user"}}"#);
-            } else {
-                print!("\r\x1b[2K\x1b[?25h");
-                println!("⚠️  Speedtest aborted by user.");
+            _ = tokio::signal::ctrl_c() => {
+                if args.json {
+                    println!(r#"{{"error": "aborted_by_user"}}"#);
+                } else {
+                    print!("\r\x1b[2K\x1b[?25h");
+                    println!("⚠️  Speedtest aborted by user.");
+                }
+                std::process::exit(130);
             }
-            std::process::exit(130);
         }
     }
 
@@ -105,15 +135,8 @@ async fn main() -> anyhow::Result<()> {
 async fn run_app(
     args: Args,
     client: Client,
+    config: Arc<AppConfig>,
 ) -> anyhow::Result<cli_speedtest::models::SpeedTestResult> {
-    let color_enabled =
-        !args.no_color && std::env::var("NO_COLOR").is_err() && console::Term::stdout().is_term();
-
-    let config = Arc::new(AppConfig {
-        quiet: args.json,
-        color: color_enabled,
-    });
-
     if !config.quiet {
         println!("🚀 Starting Rust Speedtest...\n");
     }

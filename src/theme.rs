@@ -92,6 +92,23 @@ pub fn speed_rating(mbps: f64, config: &AppConfig) -> String {
     }
 }
 
+/// Returns the visible (printed) length of a string by stripping ANSI codes first.
+/// Uses console::strip_ansi_codes which handles all standard SGR sequences.
+pub fn visible_len(s: &str) -> usize {
+    console::strip_ansi_codes(s).chars().count()
+}
+
+/// Right-pads `s` with spaces so its *visible* width equals `width`.
+/// If the visible length already meets or exceeds `width`, returns `s` unchanged.
+pub fn pad_to(s: &str, width: usize) -> String {
+    let vlen = visible_len(s);
+    if vlen >= width {
+        s.to_string()
+    } else {
+        format!("{}{}", s, " ".repeat(width - vlen))
+    }
+}
+
 /// Truncates a string to a max length, appending an ellipsis if truncated.
 pub fn truncate_to(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
@@ -146,5 +163,38 @@ mod tests {
     fn truncate_to_long_string() {
         // "long string" (11 chars) truncated to 5 -> "long…"
         assert_eq!(truncate_to("long string", 5), "long…");
+    }
+
+    #[test]
+    fn visible_len_plain_string() {
+        assert_eq!(visible_len("hello"), 5);
+    }
+
+    #[test]
+    fn visible_len_colored_string() {
+        assert_eq!(visible_len("\x1b[32m401.74\x1b[0m"), 6);
+    }
+
+    #[test]
+    fn pad_to_short_string_pads_correctly() {
+        assert_eq!(pad_to("hi", 5), "hi   ");
+    }
+
+    #[test]
+    fn pad_to_colored_string_pads_to_visible_width() {
+        let colored = "\x1b[32m401.74\x1b[0m";
+        let padded = pad_to(colored, 10);
+        assert_eq!(visible_len(&padded), 10);
+        assert!(padded.starts_with(colored));
+    }
+
+    #[test]
+    fn pad_to_already_at_width_unchanged() {
+        assert_eq!(pad_to("hello", 5), "hello");
+    }
+
+    #[test]
+    fn pad_to_over_width_unchanged() {
+        assert_eq!(pad_to("toolong", 4), "toolong");
     }
 }

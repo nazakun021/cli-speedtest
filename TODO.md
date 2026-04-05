@@ -42,6 +42,16 @@ resolved and verified via integration tests.
 
 ---
 
+## ✅ Phase 2.5: Interactive Experience & Rendering Fix (Completed)
+
+| Item | Description | Status |
+|---|---|---|
+| P2.5-1 | Summary box rendering fix (ANSI length awareness) | ✅ Fixed |
+| P2.5-2 | Interactive main menu (TTY-only, flag-compatible) | ✅ Added |
+| P2.5-3 | Interactive settings & interpretation guide | ✅ Added |
+
+---
+
 ## 🚀 Phase 3: Advanced Features
 
 - [ ] **Multi-Server Selection**: Automatically find the closest server or allow
