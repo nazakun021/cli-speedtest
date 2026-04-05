@@ -2,10 +2,11 @@
 
 use serde::Serialize;
 
-/// Shared config object — replaces quiet: bool prop-drilling (AppConfig already exists)
+/// Shared config object — replaces quiet: bool prop-drilling
 #[derive(Debug, Clone)]
 pub struct AppConfig {
     pub quiet: bool,
+    pub color: bool,
 }
 
 /// All parameters the core `run()` function needs, decoupled from clap's `Args`.

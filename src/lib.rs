@@ -2,6 +2,7 @@
 
 pub mod client;
 pub mod models;
+pub mod theme;
 pub mod utils;
 
 use chrono::Utc;
@@ -101,35 +102,87 @@ pub async fn run(
 
     // --- Summary box ---
     if !config.quiet {
-        println!("╔══════════════════════════════════════╗");
-        println!("║           📊 Test Summary            ║");
-        println!("╠══════════════════════════════════════╣");
-        println!("║  Server     : {:<23}║", server.name);
-        println!("╠══════════════════════════════════════╣");
+        let term_cols = console::Term::stdout().size().1 as usize;
+        let box_width = term_cols.saturating_sub(4).clamp(44, 60);
+        let inner_width = box_width - 2;
+
+        println!("╔{}╗", "═".repeat(inner_width));
+        println!("║{:^width$}║", "📊 Test Summary", width = inner_width);
+        println!("╠{}╣", "═".repeat(inner_width));
+
+        // Server Row
+        let server_label = "  Server     : ";
+        let server_val_width = inner_width - server_label.len() - 1;
+        let truncated_server = theme::truncate_to(&server.name, server_val_width);
         println!(
-            "║  Ping       : {:<20} ms ║",
-            format!("{:.1}", ping_stats.avg_ms)
+            "║{}{:<width$} ║",
+            server_label,
+            truncated_server,
+            width = server_val_width
         );
-        println!(
-            "║  Jitter     : {:<20} ms ║",
-            format!("{:.2}", ping_stats.jitter_ms)
-        );
-        println!("║  Min Ping   : {:<20} ms ║", ping_stats.min_ms);
-        println!("║  Max Ping   : {:<20} ms ║", ping_stats.max_ms);
-        println!(
-            "║  Packet Loss: {:<19} %  ║",
-            format!("{:.1}", ping_stats.packet_loss_pct)
-        );
-        println!("╠══════════════════════════════════════╣");
+
+        println!("╠{}╣", "═".repeat(inner_width));
+
+        // Ping Stats Rows
+        let labels = [
+            (
+                "  Ping       : ",
+                theme::color_ping(ping_stats.avg_ms, &config),
+            ),
+            (
+                "  Jitter     : ",
+                theme::color_jitter(ping_stats.jitter_ms, &config),
+            ),
+            ("  Min Ping   : ", format!("{} ms", ping_stats.min_ms)),
+            ("  Max Ping   : ", format!("{} ms", ping_stats.max_ms)),
+            (
+                "  Packet Loss: ",
+                theme::color_loss(ping_stats.packet_loss_pct, &config),
+            ),
+        ];
+
+        for (label, val) in labels {
+            let val_width = inner_width - label.len() - 1;
+            println!("║{}{:<width$} ║", label, val, width = val_width);
+        }
+
+        println!("╠{}╣", "═".repeat(inner_width));
+
+        // Download Row
         match down_speed {
-            Some(s) => println!("║  Download   : {:<18} Mbps ║", format!("{:.2}", s)),
-            None => println!("║  Download   : {:<23}║", "skipped"),
+            Some(s) => {
+                let label = "  Download   : ";
+                let speed_str = theme::color_speed(s, &config);
+                let rating = theme::speed_rating(s, &config);
+                let combined = format!("{}  {}", speed_str, rating);
+                let val_width = inner_width - label.len() - 1;
+                println!("║{}{:<width$} ║", label, combined, width = val_width);
+            }
+            None => {
+                let label = "  Download   : ";
+                let val_width = inner_width - label.len() - 1;
+                println!("║{}{:<width$} ║", label, "skipped", width = val_width);
+            }
         }
+
+        // Upload Row
         match up_speed {
-            Some(s) => println!("║  Upload     : {:<18} Mbps ║", format!("{:.2}", s)),
-            None => println!("║  Upload     : {:<23}║", "skipped"),
+            Some(s) => {
+                let label = "  Upload     : ";
+                let speed_str = theme::color_speed(s, &config);
+                let rating = theme::speed_rating(s, &config);
+                let combined = format!("{}  {}", speed_str, rating);
+                let val_width = inner_width - label.len() - 1;
+                println!("║{}{:<width$} ║", label, combined, width = val_width);
+            }
+            None => {
+                let label = "  Upload     : ";
+                let val_width = inner_width - label.len() - 1;
+                println!("║{}{:<width$} ║", label, "skipped", width = val_width);
+            }
         }
-        println!("╚══════════════════════════════════════╝");
+
+        println!("╚{}╝", "═".repeat(inner_width));
     }
 
     Ok(SpeedTestResult {

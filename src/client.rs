@@ -2,6 +2,7 @@
 
 use bytes::Bytes;
 use futures_util::StreamExt;
+use indicatif::HumanBytes;
 use rand::RngCore;
 use reqwest::Client;
 use std::sync::Arc;
@@ -12,6 +13,7 @@ use tokio::sync::Barrier;
 use tokio_util::sync::CancellationToken;
 
 use crate::models::{AppConfig, PingStats};
+use crate::theme;
 use crate::utils::{WARMUP_SECS, calculate_mbps, create_spinner, with_retry};
 
 pub async fn test_ping_stats(
@@ -63,8 +65,10 @@ pub async fn test_ping_stats(
 
     if !config.quiet {
         println!(
-            "📡 Ping: {:.1} ms avg  |  Jitter: {:.2} ms  |  Loss: {:.1}%\n",
-            avg_ms, jitter_ms, packet_loss_pct
+            "📡 Ping: {} avg  |  Jitter: {}  |  Loss: {}\n",
+            theme::color_ping(avg_ms, &config),
+            theme::color_jitter(jitter_ms, &config),
+            theme::color_loss(packet_loss_pct, &config)
         );
     }
 
@@ -90,14 +94,15 @@ pub async fn test_download(
     let pb = create_spinner(
         "Downloading...",
         &config,
-        "{spinner:.green} [{elapsed_precise}] Downloading... {bytes} total ({bytes_per_sec})",
+        "{spinner:.green} [{elapsed_precise}] {msg}",
     );
 
     let token = CancellationToken::new();
-    let barrier = Arc::new(Barrier::new(num_connections));
+    let barrier = Arc::new(Barrier::new(num_connections + 1)); // +1 for the display task
     let shared_start: Arc<OnceLock<Instant>> = Arc::new(OnceLock::new());
     let mut tasks = vec![];
 
+    // Worker tasks
     for _ in 0..num_connections {
         let client = client.clone();
         let pb = pb.clone();
@@ -111,7 +116,6 @@ pub async fn test_download(
             barrier.wait().await;
             let start = *shared_start.get_or_init(Instant::now);
 
-            // Outer loop: request a new chunk file when the previous one finishes.
             'request: loop {
                 if token.is_cancelled() {
                     break;
@@ -132,10 +136,9 @@ pub async fn test_download(
 
                 let mut stream = res.bytes_stream();
 
-                // Inner loop: drain the stream, but yield to the token on every chunk.
                 loop {
                     tokio::select! {
-                        biased; // check cancellation first to avoid polling a dead stream
+                        biased;
                         _ = token.cancelled() => break 'request,
                         item = stream.next() => {
                             match item {
@@ -147,7 +150,6 @@ pub async fn test_download(
                                     }
                                 }
                                 Some(Err(e)) => return Err(e.into()),
-                                // Stream exhausted — loop back and request the next chunk
                                 None => break,
                             }
                         }
@@ -156,19 +158,60 @@ pub async fn test_download(
             }
 
             Ok::<(), anyhow::Error>(())
-            // No #[allow(unreachable_code)] needed — every exit path is explicit
         });
 
         tasks.push(task);
     }
 
-    // Sleep for the test window, then signal all workers to stop cleanly.
+    // Display task
+    let display_task = {
+        let pb = pb.clone();
+        let total_downloaded = total_downloaded.clone();
+        let token = token.clone();
+        let config = config.clone();
+        let barrier = barrier.clone();
+
+        tokio::spawn(async move {
+            barrier.wait().await;
+            let mut prev_bytes = 0;
+            let mut prev_instant = Instant::now();
+
+            loop {
+                tokio::select! {
+                    _ = token.cancelled() => break,
+                    _ = tokio::time::sleep(Duration::from_millis(250)) => {
+                        let now_bytes = total_downloaded.load(Ordering::Relaxed);
+                        let delta = now_bytes.saturating_sub(prev_bytes);
+                        let elapsed = prev_instant.elapsed().as_secs_f64();
+                        let speed = calculate_mbps(delta, elapsed);
+
+                        let speed_str = if speed == 0.0 && now_bytes == 0 {
+                            "↓  --.- Mbps".to_string()
+                        } else {
+                            format!("↓  {}", theme::color_speed(speed, &config))
+                        };
+
+                        pb.set_message(format!(
+                            "{}    {} total",
+                            speed_str,
+                            HumanBytes(now_bytes)
+                        ));
+
+                        prev_bytes = now_bytes;
+                        prev_instant = Instant::now();
+                    }
+                }
+            }
+        })
+    };
+
     tokio::time::sleep(Duration::from_secs(duration_secs)).await;
     token.cancel();
 
     for task in tasks {
         task.await??;
     }
+    display_task.await?;
 
     pb.finish_and_clear();
 
@@ -193,14 +236,15 @@ pub async fn test_upload(
     let pb = create_spinner(
         "Uploading...",
         &config,
-        "{spinner:.red} [{elapsed_precise}] Uploading... {bytes} total ({bytes_per_sec})",
+        "{spinner:.red} [{elapsed_precise}] {msg}",
     );
 
     let token = CancellationToken::new();
-    let barrier = Arc::new(Barrier::new(num_connections));
+    let barrier = Arc::new(Barrier::new(num_connections + 1));
     let shared_start: Arc<OnceLock<Instant>> = Arc::new(OnceLock::new());
     let mut tasks = vec![];
 
+    // Worker tasks
     for _ in 0..num_connections {
         let client = client.clone();
         let pb = pb.clone();
@@ -214,7 +258,6 @@ pub async fn test_upload(
             barrier.wait().await;
             let start = *shared_start.get_or_init(Instant::now);
 
-            // Generate the payload once per connection and reuse it across requests.
             let mut raw_payload = vec![0u8; chunk_size];
             rand::rng().fill_bytes(&mut raw_payload);
             let payload = Bytes::from(raw_payload);
@@ -249,11 +292,52 @@ pub async fn test_upload(
             }
 
             Ok::<(), anyhow::Error>(())
-            // No #[allow(unreachable_code)] needed — token drives the exit
         });
 
         tasks.push(task);
     }
+
+    // Display task
+    let display_task = {
+        let pb = pb.clone();
+        let total_uploaded = total_uploaded.clone();
+        let token = token.clone();
+        let config = config.clone();
+        let barrier = barrier.clone();
+
+        tokio::spawn(async move {
+            barrier.wait().await;
+            let mut prev_bytes = 0;
+            let mut prev_instant = Instant::now();
+
+            loop {
+                tokio::select! {
+                    _ = token.cancelled() => break,
+                    _ = tokio::time::sleep(Duration::from_millis(250)) => {
+                        let now_bytes = total_uploaded.load(Ordering::Relaxed);
+                        let delta = now_bytes.saturating_sub(prev_bytes);
+                        let elapsed = prev_instant.elapsed().as_secs_f64();
+                        let speed = calculate_mbps(delta, elapsed);
+
+                        let speed_str = if speed == 0.0 && now_bytes == 0 {
+                            "↑  --.- Mbps".to_string()
+                        } else {
+                            format!("↑  {}", theme::color_speed(speed, &config))
+                        };
+
+                        pb.set_message(format!(
+                            "{}    {} total",
+                            speed_str,
+                            HumanBytes(now_bytes)
+                        ));
+
+                        prev_bytes = now_bytes;
+                        prev_instant = Instant::now();
+                    }
+                }
+            }
+        })
+    };
 
     tokio::time::sleep(Duration::from_secs(duration_secs)).await;
     token.cancel();
@@ -261,6 +345,7 @@ pub async fn test_upload(
     for task in tasks {
         task.await??;
     }
+    display_task.await?;
 
     pb.finish_and_clear();
 

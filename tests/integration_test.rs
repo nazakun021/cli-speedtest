@@ -20,7 +20,10 @@ use std::sync::Arc;
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 fn quiet_config() -> Arc<AppConfig> {
-    Arc::new(AppConfig { quiet: true })
+    Arc::new(AppConfig {
+        quiet: true,
+        color: false,
+    })
 }
 
 fn test_client() -> Client {

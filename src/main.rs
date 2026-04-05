@@ -47,6 +47,10 @@ struct Args {
     /// Enable debug logging for troubleshooting
     #[arg(long, default_value_t = false)]
     debug: bool,
+
+    /// Disable all color output (also auto-disabled when NO_COLOR is set or stdout is piped)
+    #[arg(long, default_value_t = false)]
+    no_color: bool,
 }
 
 #[tokio::main]
@@ -102,7 +106,13 @@ async fn run_app(
     args: Args,
     client: Client,
 ) -> anyhow::Result<cli_speedtest::models::SpeedTestResult> {
-    let config = Arc::new(AppConfig { quiet: args.json });
+    let color_enabled =
+        !args.no_color && std::env::var("NO_COLOR").is_err() && console::Term::stdout().is_term();
+
+    let config = Arc::new(AppConfig {
+        quiet: args.json,
+        color: color_enabled,
+    });
 
     if !config.quiet {
         println!("🚀 Starting Rust Speedtest...\n");
