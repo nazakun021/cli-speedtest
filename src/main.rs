@@ -27,7 +27,7 @@ struct Args {
     #[arg(short, long)]
     connections: Option<usize>,
 
-    /// Custom server base URL — must expose /__down, /__up, and /cdn-cgi/trace
+    /// Custom server base URL - must expose /__down, /__up, and /cdn-cgi/trace
     #[arg(long, default_value = DEFAULT_SERVER_URL)]
     server: String,
 
@@ -139,7 +139,7 @@ async fn main() -> anyhow::Result<()> {
                         if args.json {
                             println!(r#"{{"error": "{}"}}"#, e);
                         } else {
-                            eprintln!("❌ Error: {}", e);
+                            eprintln!("Error: {}", e);
                         }
                     }
                 }
@@ -149,7 +149,7 @@ async fn main() -> anyhow::Result<()> {
                     println!(r#"{{"error": "aborted_by_user"}}"#);
                 } else {
                     print!("\r\x1b[2K\x1b[?25h");
-                    println!("⚠️  Speedtest aborted by user.");
+                    println!("Speedtest aborted by user.");
                 }
                 std::process::exit(130);
             }
@@ -165,7 +165,7 @@ async fn run_app(
     config: Arc<AppConfig>,
 ) -> anyhow::Result<cli_speedtest::models::SpeedTestResult> {
     if !config.quiet {
-        println!("🚀 Starting Rust Speedtest...\n");
+        println!("Starting Rust Speedtest...\n");
     }
 
     if !args.force_run {
@@ -173,7 +173,7 @@ async fn run_app(
             cli_speedtest::cooldown::DEFAULT_COOLDOWN_SECS,
         ) {
             eprintln!(
-                "⏳ Cooldown active. Last test ran recently.\n   \
+                "Cooldown active. Last test ran recently.\n   \
                  Wait {} more minutes, or override with: speedtest --force-run",
                 remaining / 60 + 1
             );
@@ -181,7 +181,7 @@ async fn run_app(
         }
     }
 
-    // Convert CLI args into the lib's RunArgs — keeps clap out of the library
+    // Convert CLI args into the lib's RunArgs - keeps clap out of the library
     let run_args = RunArgs {
         server_url: args.server,
         duration_secs: args.duration,

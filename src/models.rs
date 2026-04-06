@@ -2,7 +2,7 @@
 
 use serde::Serialize;
 
-/// Shared config object — replaces quiet: bool prop-drilling
+/// Shared config object - replaces quiet: bool prop-drilling
 #[derive(Debug, Clone)]
 pub struct AppConfig {
     pub quiet: bool,

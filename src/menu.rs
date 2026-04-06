@@ -18,7 +18,7 @@ const ASCII_ART: &str = r#"
  ╚═════╝╚══════╝╚═╝    ╚══════╝╚═╝     ╚══════╝╚══════╝╚═════╝    ╚═╝   ╚══════╝╚══════╝   ╚═╝
 "#;
 
-const ASCII_ART_COMPACT: &str = "  CLI SPEEDTEST  •  v0.1.0";
+const ASCII_ART_COMPACT: &str = "  CLI SPEEDTEST  -  v0.1.0";
 
 pub async fn run_menu(config: Arc<AppConfig>, client: Client) -> anyhow::Result<()> {
     let mut settings = MenuSettings::default();
@@ -27,12 +27,12 @@ pub async fn run_menu(config: Arc<AppConfig>, client: Client) -> anyhow::Result<
         print_welcome(&config);
 
         let options = &[
-            "🚀  Start Full Speed Test",
-            "📡  Quick Ping Only",
-            "⚙️   Settings",
-            "📋  View Commands",
-            "❓  Help",
-            "🚪  Exit",
+            "Start Full Speed Test",
+            "Quick Ping Only",
+            "Settings",
+            "View Commands",
+            "Help",
+            "Exit",
         ];
 
         let selection = Select::with_theme(&ColorfulTheme::default())
@@ -68,9 +68,9 @@ fn print_welcome(_config: &AppConfig) {
         println!("\n{}\n", ASCII_ART_COMPACT);
     }
 
-    println!("  A blazing fast network speed tester — written in Rust");
+    println!("  A blazing fast network speed tester - written in Rust");
     println!(
-        "  v{}  •  Cloudflare backend  •  github.com/nazakun021/cli-speedtest\n",
+        "  v{}  -  Cloudflare backend  -  github.com/nazakun021/cli-speedtest\n",
         env!("CARGO_PKG_VERSION")
     );
 }
@@ -89,7 +89,7 @@ async fn run_full_test(
 
     crate::run(run_args, app_config, client.clone()).await?;
 
-    println!("\n  Press Enter to return to menu…");
+    println!("\n  Press Enter to return to menu...");
     wait_for_enter();
     Ok(())
 }
@@ -100,7 +100,7 @@ async fn run_quick_ping(
     client: &Client,
 ) -> anyhow::Result<()> {
     clear_screen();
-    println!("📡 Running Quick Ping...\n");
+    println!("Running Quick Ping...\n");
 
     let app_config = Arc::new(AppConfig {
         quiet: config.quiet,
@@ -110,7 +110,7 @@ async fn run_quick_ping(
     crate::client::test_ping_stats(client, DEFAULT_SERVER_URL, settings.ping_count, app_config)
         .await?;
 
-    println!("\n  Press Enter to return to menu…");
+    println!("\n  Press Enter to return to menu...");
     wait_for_enter();
     Ok(())
 }
@@ -118,7 +118,7 @@ async fn run_quick_ping(
 fn show_settings(settings: &mut MenuSettings, _config: &AppConfig) -> anyhow::Result<()> {
     loop {
         clear_screen();
-        println!("  ⚙️  Settings\n");
+        println!("  Settings\n");
         println!("  ───────────────────────────────");
 
         let options = &[
@@ -129,7 +129,7 @@ fn show_settings(settings: &mut MenuSettings, _config: &AppConfig) -> anyhow::Re
                 "Color Output         : {}",
                 if settings.color { "On" } else { "Off" }
             ),
-            "↩  Back to Main Menu".to_string(),
+            "<- Back to Main Menu".to_string(),
         ];
 
         let selection = Select::with_theme(&ColorfulTheme::default())
@@ -185,7 +185,7 @@ fn show_commands(_config: &AppConfig) {
     let w = 58;
     let inner_w = w - 2;
     println!("  ┌{}┐", "─".repeat(w));
-    println!("  │ {} │", pad_to("📋 Available Commands", inner_w));
+    println!("  │ {} │", pad_to("Available Commands", inner_w));
     println!("  ├{}┤", "─".repeat(w));
     println!(
         "  │ {} │",
@@ -251,7 +251,7 @@ fn show_commands(_config: &AppConfig) {
         )
     );
     println!("  └{}┘", "─".repeat(w));
-    println!("\n  Press Enter to return…");
+    println!("\n  Press Enter to return...");
     wait_for_enter();
 }
 
@@ -265,7 +265,7 @@ fn show_help(config: &AppConfig) {
     let w = 58;
     let inner_w = w - 2;
     println!("  ┌{}┐", "─".repeat(w));
-    println!("  │ {} │", pad_to("❓ Interpreting Your Results", inner_w));
+    println!("  │ {} │", pad_to("Interpreting Your Results", inner_w));
     println!("  ├{}┤", "─".repeat(w));
     println!("  │ {} │", pad_to("SPEED", inner_w));
     println!(
@@ -371,7 +371,7 @@ fn show_help(config: &AppConfig) {
     );
     println!("  └{}┘", "─".repeat(w));
 
-    println!("\n  Press Enter to return…");
+    println!("\n  Press Enter to return...");
     wait_for_enter();
 }
 

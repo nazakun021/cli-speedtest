@@ -16,7 +16,7 @@ use crate::models::{AppConfig, PingStats};
 use crate::theme;
 use crate::utils::{NonRetryableError, WARMUP_SECS, calculate_mbps, create_spinner, with_retry};
 
-// src/client.rs — shared helper used in both test_download and test_upload
+// src/client.rs - shared helper used in both test_download and test_upload
 fn check_status(r: &reqwest::Response) -> anyhow::Result<()> {
     match r.status() {
         s if s.is_success() => Ok(()),
@@ -28,15 +28,15 @@ fn check_status(r: &reqwest::Response) -> anyhow::Result<()> {
                 .and_then(|v| v.to_str().ok())
                 .and_then(|s| s.parse::<u64>().ok())
                 .map(|s| (s, "server says"))
-                .unwrap_or((900, "estimated — no Retry-After header"));
+                .unwrap_or((900, "estimated - no Retry-After header"));
 
             Err(anyhow::Error::new(NonRetryableError(anyhow::anyhow!(
                 "You've been rate-limited by Cloudflare. \
                  Please wait {} minutes ({}).\n\n\
                  Alternatives:\n  \
-                 • Use a custom server:  speedtest --server <URL>\n  \
-                 • Run ping only:        speedtest --no-download --no-upload\n  \
-                 • Force immediate run:  speedtest --force-run",
+                 - Use a custom server:  cli-speedtest --server <URL>\n  \
+                 - Run ping only:        cli-speedtest --no-download --no-upload\n  \
+                 - Force immediate run:  cli-speedtest --force-run",
                 wait_secs / 60,
                 source
             ))))
@@ -82,7 +82,7 @@ pub async fn test_ping_stats(
     pb.finish_and_clear();
 
     if samples.is_empty() {
-        anyhow::bail!("All ping attempts failed — server unreachable");
+        anyhow::bail!("All ping attempts failed - server unreachable");
     }
 
     let min_ms = *samples.iter().min().unwrap();
@@ -103,7 +103,7 @@ pub async fn test_ping_stats(
 
     if !config.quiet {
         println!(
-            "📡 Ping: {} avg  |  Jitter: {}  |  Loss: {}\n",
+            "Ping: {} avg  |  Jitter: {}  |  Loss: {}\n",
             theme::color_ping(avg_ms, &config),
             theme::color_jitter(jitter_ms, &config),
             theme::color_loss(packet_loss_pct, &config)

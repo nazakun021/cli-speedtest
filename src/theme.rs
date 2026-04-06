@@ -114,7 +114,7 @@ pub fn truncate_to(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
         s.to_string()
     } else {
-        format!("{}…", &s[..max_len - 1])
+        format!("{}...", &s[..max_len - 1])
     }
 }
 
@@ -161,8 +161,8 @@ mod tests {
 
     #[test]
     fn truncate_to_long_string() {
-        // "long string" (11 chars) truncated to 5 -> "long…"
-        assert_eq!(truncate_to("long string", 5), "long…");
+        // "long string" (11 chars) truncated to 5 -> "long..."
+        assert_eq!(truncate_to("long string", 5), "long...");
     }
 
     #[test]

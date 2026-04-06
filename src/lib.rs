@@ -32,8 +32,8 @@ where
             if is_rate_limit && initial_conns > 1 {
                 if !config.quiet {
                     eprintln!(
-                        "⚠️  {} rate limited at {} connections — retrying \
-                         with 1 connection…",
+                        "{} rate limited at {} connections - retrying \
+                         with 1 connection...",
                         test_name, initial_conns
                     );
                 }
@@ -45,7 +45,7 @@ where
     }
 }
 
-/// Core application logic — fully decoupled from clap so integration tests can
+/// Core application logic - fully decoupled from clap so integration tests can
 /// call it directly with a mockito server URL via `RunArgs::server_url`.
 pub async fn run(
     args: RunArgs,
@@ -76,7 +76,7 @@ pub async fn run(
     };
 
     if !config.quiet {
-        println!("🔍 Using server: {}\n", server.name);
+        println!("Using server: {}\n", server.name);
     }
 
     // --- Ping / Jitter / Packet Loss ---
@@ -91,7 +91,7 @@ pub async fn run(
     // --- Download (skipped if --no-download) ---
     let down_speed: Option<f64> = if args.no_download {
         if !config.quiet {
-            println!("⬇️  Download: skipped\n");
+            println!("Download: skipped\n");
         }
         None
     } else {
@@ -108,7 +108,7 @@ pub async fn run(
         })
         .await?;
         if !config.quiet {
-            println!("⬇️  Download Speed: {:.2} Mbps\n", speed);
+            println!("Download Speed: {:.2} Mbps\n", speed);
         }
         Some(speed)
     };
@@ -116,7 +116,7 @@ pub async fn run(
     // --- Upload (skipped if --no-upload) ---
     let up_speed: Option<f64> = if args.no_upload {
         if !config.quiet {
-            println!("⬆️  Upload: skipped\n");
+            println!("Upload: skipped\n");
         }
         None
     } else {
@@ -133,7 +133,7 @@ pub async fn run(
         })
         .await?;
         if !config.quiet {
-            println!("⬆️  Upload Speed: {:.2} Mbps\n", speed);
+            println!("Upload Speed: {:.2} Mbps\n", speed);
         }
         Some(speed)
     };
@@ -145,7 +145,7 @@ pub async fn run(
         let inner_width = box_width - 2;
 
         println!("╔{}╗", "═".repeat(inner_width));
-        println!("║{:^width$}║", "📊 Test Summary", width = inner_width);
+        println!("║{:^width$}║", "Test Summary", width = inner_width);
         println!("╠{}╣", "═".repeat(inner_width));
 
         // Server Row

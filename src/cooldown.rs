@@ -29,7 +29,7 @@ pub fn cooldown_remaining(cooldown_secs: u64) -> Option<u64> {
 
 /// Writes the current Unix timestamp to the last-run file.
 /// Creates the directory if it does not exist.
-/// Called only on successful test completion — failed runs do not reset
+/// Called only on successful test completion - failed runs do not reset
 /// the cooldown clock.
 pub fn record_successful_run() -> anyhow::Result<()> {
     let path =
