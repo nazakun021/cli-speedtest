@@ -3,7 +3,7 @@
 use bytes::Bytes;
 use futures_util::StreamExt;
 use indicatif::HumanBytes;
-use rand::RngCore;
+use rand::{Rng, RngCore};
 use reqwest::Client;
 use std::sync::Arc;
 use std::sync::OnceLock;
@@ -14,7 +14,45 @@ use tokio_util::sync::CancellationToken;
 
 use crate::models::{AppConfig, PingStats};
 use crate::theme;
-use crate::utils::{WARMUP_SECS, calculate_mbps, create_spinner, with_retry};
+use crate::utils::{NonRetryableError, WARMUP_SECS, calculate_mbps, create_spinner, with_retry};
+
+// src/client.rs — shared helper used in both test_download and test_upload
+fn check_status(r: &reqwest::Response) -> anyhow::Result<()> {
+    match r.status() {
+        s if s.is_success() => Ok(()),
+
+        reqwest::StatusCode::TOO_MANY_REQUESTS => {
+            let (wait_secs, source) = r
+                .headers()
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.parse::<u64>().ok())
+                .map(|s| (s, "server says"))
+                .unwrap_or((900, "estimated — no Retry-After header"));
+
+            Err(anyhow::Error::new(NonRetryableError(anyhow::anyhow!(
+                "You've been rate-limited by Cloudflare. \
+                 Please wait {} minutes ({}).\n\n\
+                 Alternatives:\n  \
+                 • Use a custom server:  speedtest --server <URL>\n  \
+                 • Run ping only:        speedtest --no-download --no-upload\n  \
+                 • Force immediate run:  speedtest --force-run",
+                wait_secs / 60,
+                source
+            ))))
+        }
+
+        reqwest::StatusCode::FORBIDDEN => {
+            Err(anyhow::Error::new(NonRetryableError(anyhow::anyhow!(
+                "Cloudflare returned 403 Forbidden. Your IP may have \
+                 triggered Bot Fight Mode. Wait 15 minutes or switch \
+                 servers with: speedtest --server <URL>"
+            ))))
+        }
+
+        s => anyhow::bail!("Request failed with status: {}", s),
+    }
+}
 
 pub async fn test_ping_stats(
     client: &Client,
@@ -123,9 +161,7 @@ pub async fn test_download(
 
                 let res = match with_retry(3, || async {
                     let r = client.get(&url).send().await?;
-                    if !r.status().is_success() {
-                        anyhow::bail!("Download failed with status: {}", r.status());
-                    }
+                    check_status(&r)?;
                     Ok(r)
                 })
                 .await
@@ -155,6 +191,9 @@ pub async fn test_download(
                         }
                     }
                 }
+
+                let jitter_ms = rand::rng().random_range(50u64..=150);
+                tokio::time::sleep(std::time::Duration::from_millis(jitter_ms)).await;
             }
 
             Ok::<(), anyhow::Error>(())
@@ -273,9 +312,7 @@ pub async fn test_upload(
                         .body(payload.clone())
                         .send()
                         .await?;
-                    if !r.status().is_success() {
-                        anyhow::bail!("Upload failed with status: {}", r.status());
-                    }
+                    check_status(&r)?;
                     Ok(r)
                 })
                 .await
@@ -289,6 +326,9 @@ pub async fn test_upload(
                     }
                     Err(e) => return Err(e),
                 }
+
+                let jitter_ms = rand::rng().random_range(50u64..=150);
+                tokio::time::sleep(Duration::from_millis(jitter_ms)).await;
             }
 
             Ok::<(), anyhow::Error>(())

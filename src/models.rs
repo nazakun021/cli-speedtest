@@ -53,7 +53,7 @@ pub struct Server {
 #[derive(Debug, Clone)]
 pub struct MenuSettings {
     pub duration_secs: u64, // default: 10
-    pub connections: usize, // default: 8
+    pub connections: usize, // default: 4
     pub ping_count: u32,    // default: 20
     pub color: bool,        // default: true
 }
@@ -62,7 +62,7 @@ impl Default for MenuSettings {
     fn default() -> Self {
         Self {
             duration_secs: 10,
-            connections: 8,
+            connections: 4,
             ping_count: 20,
             color: true,
         }
