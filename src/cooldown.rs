@@ -49,8 +49,8 @@ pub fn record_successful_run() -> anyhow::Result<()> {
 mod tests {
     use super::*;
     use std::fs;
-    use tempfile::TempDir;
     use std::sync::Mutex;
+    use tempfile::TempDir;
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
