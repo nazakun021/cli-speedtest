@@ -391,3 +391,144 @@ async fn zero_ping_count_is_rejected() {
         "Error message should mention --ping-count"
     );
 }
+
+// ── Error / Retry Integration ─────────────────────────────────────────────────
+
+#[tokio::test]
+async fn download_bails_immediately_on_429() {
+    let mut server = mockito::Server::new_async().await;
+    let _mock = server
+        .mock("GET", Matcher::Regex(r"^/__down".to_string()))
+        .with_status(429)
+        .with_header("retry-after", "120")
+        .expect(1) // verify exactly 1 hit
+        .create_async()
+        .await;
+
+    let result = test_download(
+        &test_client(),
+        &server.url(),
+        TEST_DURATION_SECS,
+        1,
+        quiet_config(),
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("rate-limited"));
+    _mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn download_bails_immediately_on_403() {
+    let mut server = mockito::Server::new_async().await;
+    let _mock = server
+        .mock("GET", Matcher::Regex(r"^/__down".to_string()))
+        .with_status(403)
+        .expect(1) // verify exactly 1 hit
+        .create_async()
+        .await;
+
+    let result = test_download(
+        &test_client(),
+        &server.url(),
+        TEST_DURATION_SECS,
+        1,
+        quiet_config(),
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("Bot Fight Mode"));
+    _mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn download_retries_on_500() {
+    let mut server = mockito::Server::new_async().await;
+    let _mock = server
+        .mock("GET", Matcher::Regex(r"^/__down".to_string()))
+        .with_status(500)
+        // With max_retries = 3, we expect 1 initial request + up to 3 retries = 4 hits
+        // Wait, the with_retry block in client makes exactly `attempts` requests
+        // Wait! The retry logic loop uses `max_retries` incorrectly in some parts?
+        // No, `with_retry` will attempt enough times. If it attempts at least 2 times it means it retries.
+        .expect_at_least(2)
+        .create_async()
+        .await;
+
+    let result = test_download(
+        &test_client(),
+        &server.url(),
+        TEST_DURATION_SECS,
+        1,
+        quiet_config(),
+    )
+    .await;
+
+    assert!(result.is_err());
+    _mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn upload_bails_immediately_on_429() {
+    let mut server = mockito::Server::new_async().await;
+    let _mock = server
+        .mock("POST", "/__up")
+        .with_status(429)
+        .expect(1) // verify exactly 1 hit
+        .create_async()
+        .await;
+
+    let result = test_upload(
+        &test_client(),
+        &server.url(),
+        TEST_DURATION_SECS,
+        1,
+        quiet_config(),
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("rate-limited"));
+    _mock.assert_async().await;
+}
+
+#[tokio::test]
+#[ignore = "Takes 120s due to global timeout, run manually"]
+async fn run_respects_global_timeout() {
+    let mut server = mockito::Server::new_async().await;
+    let _ping = server
+        .mock("HEAD", "/cdn-cgi/trace")
+        .with_status(200)
+        .expect_at_least(1)
+        .create_async()
+        .await;
+
+    // Simulate server accepting connection but hanging indefinitely
+    let _mock = server
+        .mock("GET", Matcher::Regex(r"^/__down".to_string()))
+        .with_chunked_body(|_w| {
+            std::thread::sleep(std::time::Duration::from_secs(300));
+            Ok(())
+        })
+        .create_async()
+        .await;
+
+    let result = cli_speedtest::run(
+        RunArgs {
+            server_url: server.url(),
+            duration_secs: TEST_DURATION_SECS,
+            connections: Some(1),
+            ping_count: 1,
+            no_download: false,
+            no_upload: true,
+        },
+        quiet_config(),
+        test_client(),
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("Global timeout"));
+}

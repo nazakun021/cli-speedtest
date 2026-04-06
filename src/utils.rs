@@ -191,4 +191,48 @@ mod tests {
             "Zero retries = exactly 1 attempt"
         );
     }
+
+    #[tokio::test]
+    async fn non_retryable_error_skips_retry() {
+        let attempts = Arc::new(AtomicU32::new(0));
+        let attempts_c = attempts.clone();
+
+        let result: anyhow::Result<()> = with_retry(3, move || {
+            let counter = attempts_c.clone();
+            async move {
+                counter.fetch_add(1, Ordering::SeqCst);
+                anyhow::bail!(NonRetryableError(anyhow::anyhow!("fatal error")))
+            }
+        })
+        .await;
+
+        assert!(result.is_err());
+        assert_eq!(
+            attempts.load(Ordering::SeqCst),
+            1,
+            "Should have attempted exactly once due to NonRetryableError"
+        );
+    }
+
+    #[tokio::test]
+    async fn retryable_error_uses_all_attempts() {
+        let attempts = Arc::new(AtomicU32::new(0));
+        let attempts_c = attempts.clone();
+
+        let result: anyhow::Result<()> = with_retry(2, move || {
+            let counter = attempts_c.clone();
+            async move {
+                counter.fetch_add(1, Ordering::SeqCst);
+                anyhow::bail!("transient error")
+            }
+        })
+        .await;
+
+        assert!(result.is_err());
+        assert_eq!(
+            attempts.load(Ordering::SeqCst),
+            3,
+            "A regular anyhow::bail! still retries max_retries + 1 times"
+        );
+    }
 }

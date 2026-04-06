@@ -9,10 +9,10 @@ A blazing-fast, high-performance CLI speedtest tool written in Rust. Designed fo
 - **Interactive Menu**: User-friendly TTY menu for quick tests, settings, and help.
 - **Blazing Fast**: Powered by `tokio` for asynchronous, non-blocking I/O.
 - **High Concurrency**: Multi-threaded download and upload tests using `tokio` tasks and `Barrier` synchronization to saturate high-speed connections.
-- **Production Grade**: 
+- **Production Grade**:
   - **Warm-up Phase**: Includes a 2-second warm-up period to avoid TCP slow-start bias for more consistent results.
   - **Retry Logic**: Built-in exponential backoff for failed network requests.
-- **Comprehensive Metrics**: 
+- **Comprehensive Metrics**:
   - **Latency**: Min, Max, Average, Jitter, and Packet Loss.
   - **Throughput**: Real-time Mbps for both Download and Upload.
 - **Visual Polish**: Semantic color-coding and live rolling-speed displays.
@@ -22,15 +22,19 @@ A blazing-fast, high-performance CLI speedtest tool written in Rust. Designed fo
 ## Installation
 
 ### Using Cargo (Recommended for Rust Users)
+
 If you have [Rust](https://rustup.rs/) installed, you can install the CLI easily:
+
 ```zsh
 cargo install cli-speedtest
 ```
 
 ### Pre-compiled Binaries (GitHub Releases)
+
 You can directly download and install the latest pre-compiled binaries from the terminal.
 
 **Linux (amd64):**
+
 ```bash
 curl -L https://github.com/nazakun021/cli-speedtest/releases/latest/download/speedtest-linux-amd64 -o cli-speedtest
 chmod +x cli-speedtest
@@ -39,6 +43,7 @@ sudo mv cli-speedtest /usr/local/bin/
 ```
 
 **macOS (Apple Silicon):**
+
 ```bash
 curl -L https://github.com/nazakun021/cli-speedtest/releases/latest/download/speedtest-macos-arm64 -o cli-speedtest
 chmod +x cli-speedtest
@@ -47,6 +52,7 @@ sudo mv cli-speedtest /usr/local/bin/
 ```
 
 **macOS (Intel):**
+
 ```bash
 curl -L https://github.com/nazakun021/cli-speedtest/releases/latest/download/speedtest-macos-intel -o cli-speedtest
 chmod +x cli-speedtest
@@ -54,17 +60,19 @@ sudo mkdir -p /usr/local/bin
 sudo mv cli-speedtest /usr/local/bin/
 ```
 
-> **Note for macOS Users**: If you get a "command not found" error, ensure `/usr/local/bin` is in your `$PATH`. 
-> If macOS prevents the binary from running due to an "Unidentified Developer" warning (Gatekeeper), run: 
+> **Note for macOS Users**: If you get a "command not found" error, ensure `/usr/local/bin` is in your `$PATH`.
+> If macOS prevents the binary from running due to an "Unidentified Developer" warning (Gatekeeper), run:
 > `sudo xattr -d com.apple.quarantine /usr/local/bin/cli-speedtest`
 
 **Windows (PowerShell):**
+
 ```powershell
 Invoke-WebRequest -Uri "https://github.com/nazakun021/cli-speedtest/releases/latest/download/speedtest-windows-amd64.exe" -OutFile "cli-speedtest.exe"
 # The executable will be available in your current directory as `cli-speedtest.exe`
 ```
 
 ### From Source
+
 You will need the [Rust toolchain](https://rustup.rs/) installed.
 
 ```zsh
@@ -78,27 +86,32 @@ The binary will be available at `target/release/cli-speedtest`.
 ## Usage
 
 ### Interactive Mode
+
 Simply run the installed binary without flags to enter the interactive menu:
+
 ```zsh
 cli-speedtest
 ```
 
 ### Direct Run (Scripting Friendly)
+
 Pass any configuration flag to bypass the menu and run directly:
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `-d, --duration <SECS>` | Length of the test in seconds | `10` |
-| `-c, --connections <N>` | Number of parallel connections | `8` (DL), `4` (UL) |
-| `--server <URL>` | Custom target server URL | Cloudflare |
-| `--ping-count <N>` | Number of pings to send | `20` |
-| `--no-download` | Skip the download test | - |
-| `--no-upload` | Skip the upload test | - |
-| `--json` | Output results in JSON format | - |
-| `--no-color` | Disable terminal styling | - |
-| `--debug` | Enable verbose logging | - |
+| Flag                    | Description                                   | Default            |
+| ----------------------- | --------------------------------------------- | ------------------ |
+| `-d, --duration <SECS>` | Length of the test in seconds                 | `10`               |
+| `-c, --connections <N>` | Number of parallel connections                | `8` (DL), `4` (UL) |
+| `--server <URL>`        | Custom target server URL                      | Cloudflare         |
+| `--ping-count <N>`      | Number of pings to send                       | `20`               |
+| `--no-download`         | Skip the download test                        | -                  |
+| `--no-upload`           | Skip the upload test                          | -                  |
+| `--json`                | Output results in JSON format                 | -                  |
+| `--no-color`            | Disable terminal styling                      | -                  |
+| `--debug`               | Enable verbose logging                        | -                  |
+| `--force-run`           | Bypass the local cooldown and run immediately | -                  |
 
 ### Examples
+
 ```zsh
 # Run a 5-second test with 12 connections
 cli-speedtest --duration 5 --connections 12
@@ -111,7 +124,9 @@ cli-speedtest --server https://your-custom-speedtest-server.com
 ```
 
 ## JSON Output Schema
+
 When running with `--json`, the tool returns a structured object:
+
 ```json
 {
   "timestamp": "2026-04-05T12:00:00Z",
@@ -168,12 +183,14 @@ We welcome contributions! Whether it's adding new features, fixing bugs, or impr
 ### Local Development Setup
 
 1. **Fork & Clone**: Fork the repository on GitHub and clone your fork locally:
+
    ```zsh
    git clone https://github.com/nazakun021/cli-speedtest.git
    cd cli-speedtest
    ```
 
 2. **Build the Project**: Compile the binary.
+
    ```zsh
    cargo build
    ```
@@ -184,7 +201,9 @@ We welcome contributions! Whether it's adding new features, fixing bugs, or impr
    ```
 
 ### Code Style & Quality
+
 Before submitting a pull request, please ensure your code adheres to standard Rust formatting and linting rules:
+
 ```zsh
 cargo fmt        # Auto-format your code
 cargo clippy     # Run the linter
@@ -192,6 +211,7 @@ cargo test       # Ensure all tests pass
 ```
 
 ### Submitting a Pull Request
+
 1. Create a new branch: `git checkout -b feature/your-feature-name`
 2. Commit your changes: `git commit -m "feat: add new awesome feature"`
 3. Push to your branch: `git push origin feature/your-feature-name`
@@ -202,4 +222,5 @@ cargo test       # Ensure all tests pass
 Distributed under the Apache License 2.0. See `LICENSE` for more information.
 
 ---
+
 Built with ❤️ by [Tirso Benedict J. Naza](https://github.com/nazakun021)

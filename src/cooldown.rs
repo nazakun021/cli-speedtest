@@ -9,6 +9,9 @@ pub const DEFAULT_COOLDOWN_SECS: u64 = 300; // 5 minutes
 /// Linux/macOS: ~/.local/share/speedtest/last_run
 /// Windows:     %APPDATA%\speedtest\last_run
 pub fn last_run_path() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("SPEEDTEST_MOCK_DATA_DIR") {
+        return Some(PathBuf::from(p).join("speedtest").join("last_run"));
+    }
     dirs::data_local_dir().map(|d| d.join("speedtest").join("last_run"))
 }
 
@@ -44,10 +47,94 @@ pub fn record_successful_run() -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn setup_test_env() -> TempDir {
+        let temp = TempDir::new().expect("Failed to create temp dir");
+        unsafe {
+            std::env::set_var("SPEEDTEST_MOCK_DATA_DIR", temp.path());
+        }
+        temp
+    }
 
     #[test]
     fn cooldown_none_when_no_file() {
-        // Just verify it doesn't crash on non-existent config paths
-        // We can't safely test the file presence without mocking dirs, but we can verify the method signature works
+        let _guard = ENV_LOCK.lock().unwrap();
+        let _temp = setup_test_env();
+        assert_eq!(cooldown_remaining(DEFAULT_COOLDOWN_SECS), None);
+    }
+
+    #[test]
+    fn cooldown_none_when_elapsed() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let _temp = setup_test_env();
+        let path = last_run_path().unwrap();
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+
+        let old_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            - 1000;
+        fs::write(&path, old_time.to_string()).unwrap();
+
+        assert_eq!(cooldown_remaining(DEFAULT_COOLDOWN_SECS), None);
+    }
+
+    #[test]
+    fn cooldown_some_when_active() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let _temp = setup_test_env();
+        let path = last_run_path().unwrap();
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+
+        let recent_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            - 100;
+        fs::write(&path, recent_time.to_string()).unwrap();
+
+        let remaining = cooldown_remaining(DEFAULT_COOLDOWN_SECS);
+        assert!(remaining.is_some());
+        assert!(remaining.unwrap() <= 200); // 300 - 100
+    }
+
+    #[test]
+    fn record_run_creates_file() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let _temp = setup_test_env();
+
+        // Ensure file does not exist
+        let path = last_run_path().unwrap();
+        assert!(!path.exists());
+
+        record_successful_run().expect("Should record successfully");
+
+        assert!(path.exists());
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(content.trim().parse::<u64>().is_ok());
+    }
+
+    #[test]
+    fn record_run_creates_missing_dirs() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let temp = setup_test_env();
+
+        // Remove the speedtest directory if it somehow exists to ensure we create it
+        let speedtest_dir = temp.path().join("speedtest");
+        if speedtest_dir.exists() {
+            fs::remove_dir_all(&speedtest_dir).unwrap();
+        }
+
+        record_successful_run().expect("Should record successfully with missing parent dir");
+
+        let path = last_run_path().unwrap();
+        assert!(path.exists());
     }
 }

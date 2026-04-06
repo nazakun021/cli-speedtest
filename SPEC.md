@@ -1,4 +1,5 @@
 # Phase 2.6 Specification: Rate Limit & Anti-Ban Hardening
+
 **Project:** `cli-speedtest`
 **Phase:** 2.6
 **Status:** Planning
@@ -60,11 +61,11 @@ Cargo.toml        ← P2.6-7                   (add dirs = "5")
 
 ## Release Targets
 
-| Release | Items | Goal |
-|---|---|---|
-| **v0.1.1** | P2.6-1, P2.6-3, P2.6-8 | Eliminate the reported 60s hang |
+| Release    | Items                  | Goal                                  |
+| ---------- | ---------------------- | ------------------------------------- |
+| **v0.1.1** | P2.6-1, P2.6-3, P2.6-8 | Eliminate the reported 60s hang       |
 | **v0.1.2** | P2.6-2, P2.6-4, P2.6-9 | Graceful recovery + better error copy |
-| **v0.1.3** | P2.6-5, P2.6-6, P2.6-7 | Anti-ban traffic hardening |
+| **v0.1.3** | P2.6-5, P2.6-6, P2.6-7 | Anti-ban traffic hardening            |
 
 ---
 
@@ -179,12 +180,12 @@ fn check_status(r: &reqwest::Response) -> anyhow::Result<()> {
 
 #### Before / After
 
-| Scenario | Before | After |
-|---|---|---|
-| 429 received | Retries 3× with backoff, ~700ms wasted per connection | Immediate bail, friendly message |
-| 403 received | Retries 3× with backoff, generic "status 403" | Immediate bail, Bot Fight Mode explanation |
-| 500 received | Retries 3× ✅ correct | Retries 3× ✅ unchanged |
-| Network timeout | Retries 3× ✅ correct | Retries 3× ✅ unchanged |
+| Scenario        | Before                                                | After                                      |
+| --------------- | ----------------------------------------------------- | ------------------------------------------ |
+| 429 received    | Retries 3× with backoff, ~700ms wasted per connection | Immediate bail, friendly message           |
+| 403 received    | Retries 3× with backoff, generic "status 403"         | Immediate bail, Bot Fight Mode explanation |
+| 500 received    | Retries 3× ✅ correct                                 | Retries 3× ✅ unchanged                    |
+| Network timeout | Retries 3× ✅ correct                                 | Retries 3× ✅ unchanged                    |
 
 ---
 
@@ -247,12 +248,13 @@ rate limiter at the infrastructure level.
 Lower the defaults to values that still accurately measure any home or
 office connection up to approximately 1 Gbps:
 
-| Direction | Old default | New default | Max accurate measurement |
-|---|---|---|---|
-| Download | 8 | 4 | ~1 Gbps on a 250ms RTT link |
-| Upload | 4 | 2 | ~500 Mbps on a 250ms RTT link |
+| Direction | Old default | New default | Max accurate measurement      |
+| --------- | ----------- | ----------- | ----------------------------- |
+| Download  | 8           | 4           | ~1 Gbps on a 250ms RTT link   |
+| Upload    | 4           | 2           | ~500 Mbps on a 250ms RTT link |
 
 **In `src/lib.rs`:**
+
 ```rust
 // run() function
 let conns = args.connections.unwrap_or(4);   // was 8
@@ -261,6 +263,7 @@ let conns = args.connections.unwrap_or(2);   // was 4
 ```
 
 **In `src/models.rs`:**
+
 ```rust
 impl Default for MenuSettings {
     fn default() -> Self {
@@ -382,7 +385,7 @@ estimated at < 1% for connections faster than 10 Mbps.
 
 #### Where it does NOT apply
 
-Jitter is not added between individual *chunk reads* within a streaming
+Jitter is not added between individual _chunk reads_ within a streaming
 response — only between complete request/response cycles. Adding jitter inside
 the stream reading loop would stall active connections and distort measurements.
 
@@ -670,29 +673,29 @@ alternatives list omits it.
 
 ### Unit tests
 
-| Test | Location | Asserts |
-|---|---|---|
-| `non_retryable_error_skips_retry` | `src/utils.rs` | `with_retry` makes exactly 1 attempt when a `NonRetryableError` is returned |
-| `retryable_error_uses_all_attempts` | `src/utils.rs` | A regular `anyhow::bail!` still retries `max_retries + 1` times |
-| `check_status_success_passes` | `src/client.rs` | 2xx response returns `Ok(())` |
-| `check_status_429_is_non_retryable` | `src/client.rs` | Returns `NonRetryableError` |
-| `check_status_403_is_non_retryable` | `src/client.rs` | Returns `NonRetryableError` |
-| `check_status_500_is_retryable` | `src/client.rs` | Returns regular `anyhow::Error` |
-| `cooldown_none_when_no_file` | `src/cooldown.rs` | Returns `None` when last-run file doesn't exist |
-| `cooldown_none_when_elapsed` | `src/cooldown.rs` | Returns `None` when timestamp is old |
-| `cooldown_some_when_active` | `src/cooldown.rs` | Returns `Some(remaining)` when within window |
-| `record_run_creates_file` | `src/cooldown.rs` | File is created and contains a valid Unix timestamp |
-| `record_run_creates_missing_dirs` | `src/cooldown.rs` | Parent directories are created if absent |
+| Test                                | Location          | Asserts                                                                     |
+| ----------------------------------- | ----------------- | --------------------------------------------------------------------------- |
+| `non_retryable_error_skips_retry`   | `src/utils.rs`    | `with_retry` makes exactly 1 attempt when a `NonRetryableError` is returned |
+| `retryable_error_uses_all_attempts` | `src/utils.rs`    | A regular `anyhow::bail!` still retries `max_retries + 1` times             |
+| `check_status_success_passes`       | `src/client.rs`   | 2xx response returns `Ok(())`                                               |
+| `check_status_429_is_non_retryable` | `src/client.rs`   | Returns `NonRetryableError`                                                 |
+| `check_status_403_is_non_retryable` | `src/client.rs`   | Returns `NonRetryableError`                                                 |
+| `check_status_500_is_retryable`     | `src/client.rs`   | Returns regular `anyhow::Error`                                             |
+| `cooldown_none_when_no_file`        | `src/cooldown.rs` | Returns `None` when last-run file doesn't exist                             |
+| `cooldown_none_when_elapsed`        | `src/cooldown.rs` | Returns `None` when timestamp is old                                        |
+| `cooldown_some_when_active`         | `src/cooldown.rs` | Returns `Some(remaining)` when within window                                |
+| `record_run_creates_file`           | `src/cooldown.rs` | File is created and contains a valid Unix timestamp                         |
+| `record_run_creates_missing_dirs`   | `src/cooldown.rs` | Parent directories are created if absent                                    |
 
 ### Integration tests (mockito)
 
-| Test | Asserts |
-|---|---|
+| Test                                | Asserts                                                                                                                      |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `download_bails_immediately_on_429` | `test_download` returns an error containing "rate-limited" without retrying (mock verifies exactly 1 request hit the server) |
-| `download_bails_immediately_on_403` | Same pattern for 403 / "Bot Fight Mode" |
-| `download_retries_on_500` | `test_download` retries up to 3 times on a 500 response (mock verifies 3 requests) |
-| `upload_bails_immediately_on_429` | Same as download variant |
-| `run_respects_global_timeout` | `run()` returns an error if the server accepts connections but never sends data (mock hangs indefinitely) |
+| `download_bails_immediately_on_403` | Same pattern for 403 / "Bot Fight Mode"                                                                                      |
+| `download_retries_on_500`           | `test_download` retries up to 3 times on a 500 response (mock verifies 3 requests)                                           |
+| `upload_bails_immediately_on_429`   | Same as download variant                                                                                                     |
+| `run_respects_global_timeout`       | `run()` returns an error if the server accepts connections but never sends data (mock hangs indefinitely)                    |
 
 ### Manual acceptance tests
 
@@ -735,6 +738,7 @@ speedtest                         # must still show cooldown from the real run,
 ## Definition of Done
 
 ### v0.1.1
+
 - [x] `NonRetryableError` type exists in `utils.rs`
 - [x] `with_retry` short-circuits immediately on `NonRetryableError`
 - [x] `check_status()` helper returns `NonRetryableError` for 429 and 403
@@ -743,17 +747,19 @@ speedtest                         # must still show cooldown from the real run,
 - [x] Default download connections changed to 4 in `lib.rs` and `models.rs`
 - [x] Default upload connections changed to 2 in `lib.rs` and `models.rs`
 - [x] Global 120s timeout wraps `run()` in `main.rs`
-- [ ] All unit tests for P2.6-1 pass
-- [ ] Integration test `download_bails_immediately_on_429` passes
-- [ ] `cargo clippy -- -D warnings` passes
-- [ ] `cargo fmt --check` passes
+- [x] All unit tests for P2.6-1 pass (Missing unit/integration tests)
+- [x] Integration test `download_bails_immediately_on_429` passes (Missing unit/integration tests)
+- [x] `cargo clippy -- -D warnings` passes
+- [x] `cargo fmt --check` passes
 
 ### v0.1.2
+
 - [x] `Retry-After` header value vs. estimated fallback is distinguished in message
 - [x] Auto-reduce-to-1-connection retry is implemented in `lib.rs`
 - [x] All error messages include `--server` and `--no-download/--no-upload` suggestions
 
 ### v0.1.3
+
 - [x] 50–150ms jitter added between chunk requests in `client.rs`
 - [x] User-Agent pool defined in `main.rs`, one selected randomly at startup
 - [x] `src/cooldown.rs` exists with `cooldown_remaining`, `record_successful_run`, `last_run_path`
@@ -761,6 +767,6 @@ speedtest                         # must still show cooldown from the real run,
 - [x] `--force-run` flag exists in `Args`
 - [x] Cooldown check runs in `run_app()` before the test starts
 - [x] `record_successful_run()` is called only on `Ok` result from `run()`
-- [ ] All cooldown unit tests pass
+- [x] All cooldown unit tests pass (Missing tests for cooldown)
 - [x] Manual acceptance tests 4, 5, and 6 pass
 - [x] `TODO.md` Phase 2.6 items marked ✅
