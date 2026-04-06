@@ -1,6 +1,7 @@
 // src/lib.rs
 
 pub mod client;
+pub mod cooldown;
 pub mod menu;
 pub mod models;
 pub mod theme;
@@ -10,9 +11,39 @@ use chrono::Utc;
 use models::{AppConfig, RunArgs, Server, SpeedTestResult};
 use reqwest::Client;
 use std::sync::Arc;
-use utils::WARMUP_SECS;
+use utils::{NonRetryableError, WARMUP_SECS};
 
 const DEFAULT_SERVER_URL: &str = "https://speed.cloudflare.com";
+
+async fn run_with_fallback_concurrency<F, Fut>(
+    initial_conns: usize,
+    config: Arc<AppConfig>,
+    test_name: &str,
+    mut f: F,
+) -> anyhow::Result<f64>
+where
+    F: FnMut(usize) -> Fut,
+    Fut: std::future::Future<Output = anyhow::Result<f64>>,
+{
+    match f(initial_conns).await {
+        Ok(speed) => Ok(speed),
+        Err(e) => {
+            let is_rate_limit = e.downcast_ref::<NonRetryableError>().is_some();
+            if is_rate_limit && initial_conns > 1 {
+                if !config.quiet {
+                    eprintln!(
+                        "⚠️  {} rate limited at {} connections — retrying \
+                         with 1 connection…",
+                        test_name, initial_conns
+                    );
+                }
+                f(1).await
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
 
 /// Core application logic — fully decoupled from clap so integration tests can
 /// call it directly with a mockito server URL via `RunArgs::server_url`.
@@ -64,14 +95,17 @@ pub async fn run(
         }
         None
     } else {
-        let conns = args.connections.unwrap_or(8);
-        let speed = client::test_download(
-            &client,
-            &server.base_url,
-            args.duration_secs,
-            conns,
-            Arc::clone(&config),
-        )
+        let conns = args.connections.unwrap_or(4);
+        let config_clone = Arc::clone(&config);
+        let speed = run_with_fallback_concurrency(conns, config_clone, "Download", |c| {
+            client::test_download(
+                &client,
+                &server.base_url,
+                args.duration_secs,
+                c,
+                Arc::clone(&config),
+            )
+        })
         .await?;
         if !config.quiet {
             println!("⬇️  Download Speed: {:.2} Mbps\n", speed);
@@ -86,14 +120,17 @@ pub async fn run(
         }
         None
     } else {
-        let conns = args.connections.unwrap_or(4);
-        let speed = client::test_upload(
-            &client,
-            &server.base_url,
-            args.duration_secs,
-            conns,
-            Arc::clone(&config),
-        )
+        let conns = args.connections.unwrap_or(2);
+        let config_clone = Arc::clone(&config);
+        let speed = run_with_fallback_concurrency(conns, config_clone, "Upload", |c| {
+            client::test_upload(
+                &client,
+                &server.base_url,
+                args.duration_secs,
+                c,
+                Arc::clone(&config),
+            )
+        })
         .await?;
         if !config.quiet {
             println!("⬆️  Upload Speed: {:.2} Mbps\n", speed);

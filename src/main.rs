@@ -1,6 +1,7 @@
 // src/main.rs
 
 use clap::Parser;
+use rand::Rng;
 use reqwest::Client;
 use std::sync::Arc;
 use std::time::Duration;
@@ -10,6 +11,7 @@ use cli_speedtest::models::{AppConfig, RunArgs};
 
 const CONNECT_TIMEOUT_SECS: u64 = 10;
 const REQUEST_TIMEOUT_SECS: u64 = 30;
+const GLOBAL_TEST_TIMEOUT_SECS: u64 = 120; // 2 minutes hard maximum
 const DEFAULT_SERVER_URL: &str = "https://speed.cloudflare.com";
 
 /// A blazing fast CLI Speedtest written in Rust
@@ -52,6 +54,10 @@ struct Args {
     /// Disable all color output (also auto-disabled when NO_COLOR is set or stdout is piped)
     #[arg(long, default_value_t = false)]
     no_color: bool,
+
+    /// Bypass the local cooldown and run the test immediately
+    #[arg(long, default_value_t = false)]
+    force_run: bool,
 }
 
 impl Args {
@@ -79,8 +85,18 @@ async fn main() -> anyhow::Result<()> {
 
     debug!("Application started with args: {:?}", args);
 
+    const USER_AGENTS: &[&str] = &[
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+    ];
+
+    let ua = USER_AGENTS[rand::rng().random_range(0..USER_AGENTS.len())];
+
     let client = Client::builder()
-        .user_agent("rust-speedtest/0.1.0")
+        .user_agent(ua)
         .connect_timeout(Duration::from_secs(CONNECT_TIMEOUT_SECS))
         .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
         .build()?;
@@ -101,7 +117,18 @@ async fn main() -> anyhow::Result<()> {
         cli_speedtest::menu::run_menu(config, client).await?;
     } else {
         tokio::select! {
-            res = run_app(args.clone(), client, config) => {
+            res = tokio::time::timeout(
+                Duration::from_secs(GLOBAL_TEST_TIMEOUT_SECS),
+                run_app(args.clone(), client, config)
+            ) => {
+                let res = res.unwrap_or_else(|_| {
+                    Err(anyhow::anyhow!(
+                        "Test timed out after {}s. The server may be rate limiting \
+                         or unreachable.\n\n\
+                         Try a custom server: speedtest --server <URL>",
+                        GLOBAL_TEST_TIMEOUT_SECS
+                    ))
+                });
                 match res {
                     Ok(result) => {
                         if args.json {
@@ -141,6 +168,19 @@ async fn run_app(
         println!("🚀 Starting Rust Speedtest...\n");
     }
 
+    if !args.force_run {
+        if let Some(remaining) = cli_speedtest::cooldown::cooldown_remaining(
+            cli_speedtest::cooldown::DEFAULT_COOLDOWN_SECS,
+        ) {
+            eprintln!(
+                "⏳ Cooldown active. Last test ran recently.\n   \
+                 Wait {} more minutes, or override with: speedtest --force-run",
+                remaining / 60 + 1
+            );
+            std::process::exit(1);
+        }
+    }
+
     // Convert CLI args into the lib's RunArgs — keeps clap out of the library
     let run_args = RunArgs {
         server_url: args.server,
@@ -151,5 +191,9 @@ async fn run_app(
         no_upload: args.no_upload,
     };
 
-    cli_speedtest::run(run_args, config, client).await
+    let result = cli_speedtest::run(run_args, config, client).await?;
+
+    let _ = cli_speedtest::cooldown::record_successful_run();
+
+    Ok(result)
 }

@@ -2,6 +2,7 @@
 
 use crate::models::AppConfig;
 use indicatif::{ProgressBar, ProgressStyle};
+use std::fmt;
 use std::time::Duration;
 use tracing::debug;
 
@@ -39,6 +40,10 @@ where
         match f().await {
             Ok(val) => return Ok(val),
             Err(e) => {
+                // If the closure wrapped the error as NonRetryable, bail instantly
+                if let Some(nre) = e.downcast_ref::<NonRetryableError>() {
+                    return Err(anyhow::anyhow!("{}", nre.0));
+                }
                 if attempt < max_retries {
                     let backoff = Duration::from_millis(100 * 2u64.pow(attempt));
                     debug!(
@@ -56,6 +61,21 @@ where
     }
     Err(last_err)
 }
+
+/// Marker error that tells with_retry to bail immediately without retrying.
+/// Used for HTTP 429 / 403 where retrying is actively harmful.
+#[derive(Debug)]
+pub struct NonRetryableError(pub anyhow::Error);
+
+// anyhow::Error::new() requires StdError, which requires Display
+impl fmt::Display for NonRetryableError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+// This is the missing trait that causes the compiler error
+impl std::error::Error for NonRetryableError {}
 
 #[cfg(test)]
 mod tests {
