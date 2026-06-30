@@ -1022,6 +1022,18 @@ async fn run_update_succeeds_and_replaces_mock_executable() {
     let mut server = mockito::Server::new_async().await;
     let new_binary_payload = "NEW_BINARY_EXE_CONTENT_DATA";
 
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(new_binary_payload.as_bytes());
+    let expected_sha = format!("{:x}", hasher.finalize());
+
+    let _mock_sha = server
+        .mock("GET", "/speedtest-new-binary.sha256")
+        .with_status(200)
+        .with_body(expected_sha)
+        .create_async()
+        .await;
+
     let _mock = server
         .mock("GET", "/speedtest-new-binary")
         .with_status(200)
@@ -1066,6 +1078,18 @@ async fn run_update_with_progress_bar_succeeds() {
     let mut server = mockito::Server::new_async().await;
     // Serve 1MB of binary content to trigger multiple progress bar updates
     let large_binary_payload = vec![65u8; 1024 * 1024];
+
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(&large_binary_payload);
+    let expected_sha = format!("{:x}", hasher.finalize());
+
+    let _mock_sha = server
+        .mock("GET", "/speedtest-large-binary.sha256")
+        .with_status(200)
+        .with_body(expected_sha)
+        .create_async()
+        .await;
 
     let _mock = server
         .mock("GET", "/speedtest-large-binary")
@@ -1141,6 +1165,18 @@ async fn cli_self_update_flag_performs_update_and_exits() {
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(serde_json::to_string(&mock_response).unwrap())
+        .create_async()
+        .await;
+
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(b"NEW_CLI_PAYLOAD");
+    let expected_sha = format!("{:x}", hasher.finalize());
+
+    let _mock_sha = server
+        .mock("GET", "/download-asset.sha256")
+        .with_status(200)
+        .with_body(expected_sha)
         .create_async()
         .await;
 
@@ -1225,6 +1261,18 @@ async fn check_and_perform_auto_update_succeeds_and_updates_cache() {
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(serde_json::to_string(&mock_response).unwrap())
+        .create_async()
+        .await;
+
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(b"NEW_AUTO_PAYLOAD");
+    let expected_sha = format!("{:x}", hasher.finalize());
+
+    let _mock_sha = server
+        .mock("GET", "/download-asset.sha256")
+        .with_status(200)
+        .with_body(expected_sha)
         .create_async()
         .await;
 
@@ -1395,6 +1443,18 @@ async fn check_and_perform_auto_update_gracefully_handles_permission_denied() {
         .create_async()
         .await;
 
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(b"NEW_CLI_PAYLOAD");
+    let expected_sha = format!("{:x}", hasher.finalize());
+
+    let _mock_sha = server
+        .mock("GET", "/download-asset.sha256")
+        .with_status(200)
+        .with_body(expected_sha)
+        .create_async()
+        .await;
+
     let _mock_asset = server
         .mock("GET", "/download-asset")
         .with_status(200)
@@ -1467,6 +1527,18 @@ async fn test_tui_menu_triggers_updater_on_startup() {
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(serde_json::to_string(&mock_response).unwrap())
+        .create_async()
+        .await;
+
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(b"NEW_TUI_PAYLOAD");
+    let expected_sha = format!("{:x}", hasher.finalize());
+
+    let _mock_sha = server
+        .mock("GET", "/download-asset.sha256")
+        .with_status(200)
+        .with_body(expected_sha)
         .create_async()
         .await;
 

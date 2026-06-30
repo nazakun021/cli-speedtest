@@ -49,11 +49,31 @@ jobs:
       - name: Build Release Binary
         run: cargo build --release --target ${{ matrix.target }}
 
+      - name: Generate Checksum (Non-Windows)
+        if: matrix.os != 'windows-latest'
+        run: shasum -a 256 target/${{ matrix.target }}/release/${{ matrix.artifact_name }} | cut -d' ' -f1 > target/${{ matrix.target }}/release/${{ matrix.artifact_name }}.sha256
+
+      - name: Generate Checksum (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash target/${{ matrix.target }}/release/${{ matrix.artifact_name }} -Algorithm SHA256).Hash.ToLower()
+          Set-Content -Path target/${{ matrix.target }}/release/${{ matrix.artifact_name }}.sha256 -Value $hash
+
       - name: Upload binaries to Release
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
           asset_name: ${{ matrix.asset_name }}
+          tag: ${{ github.ref }}
+          overwrite: true
+
+      - name: Upload checksums to Release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: target/${{ matrix.target }}/release/${{ matrix.artifact_name }}.sha256
+          asset_name: ${{ matrix.asset_name }}.sha256
           tag: ${{ github.ref }}
           overwrite: true

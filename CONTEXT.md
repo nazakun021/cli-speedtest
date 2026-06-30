@@ -33,6 +33,10 @@ _Avoid_: Throttle, block, rate-limit (local)
 **Resilience**:
 The tool's ability to successfully complete measurements by adapting to restrictive network environments through pacing, jitter, and connection fallback.
 
+**User-Agent Rotation**:
+A resiliency technique that alternates the request HTTP headers to emulate standard browser traffic, preventing false-positive blocking by the **Provider**'s automated bot detection systems.
+_Avoid_: User-agent spoofing, bot evasion.
+
 **Provider**:
 The remote infrastructure (e.g., Cloudflare) used to host the speedtest endpoints.
 _Avoid_: Server, target, host
@@ -45,11 +49,19 @@ A TTY-based menu system for manual test execution and settings management.
 **Direct Mode**:
 Non-interactive execution using CLI flags, optimized for scripting and JSON output.
 
+**Direct Mode Activation**:
+The routing logic that bypasses **Interactive Mode** and runs the speedtest immediately when any configuration-altering CLI flags are explicitly passed by the user.
+_Avoid_: CLI bypass, auto-run routing.
+
 ## Distribution & Updates
 
 **Self-Update**:
 The mechanism by which the tool automatically detects, downloads, and applies a newer release of its own executable, triggered at most once in a 24-hour period after a test run.
 _Avoid_: Auto-upgrade, software update, patch install.
+
+**Checksum Verification**:
+The integrity check performed during a **Self-Update** that matches the computed SHA-256 hash of a downloaded executable against a trusted remote manifest.
+_Avoid_: Hash validation, binary verification.
 
 ## Core Principles
 

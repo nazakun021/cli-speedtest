@@ -1,6 +1,6 @@
 // src/main.rs
 
-use clap::Parser;
+use clap::{CommandFactory, FromArgMatches, Parser};
 use rand::Rng;
 use reqwest::Client;
 use std::sync::Arc;
@@ -68,24 +68,21 @@ struct Args {
     self_update: bool,
 }
 
-impl Args {
-    /// Returns true if the user passed any flag that customises run behaviour.
-    /// Used to decide whether to show the interactive menu.
-    fn has_any_action_flags(&self) -> bool {
-        self.no_download
-            || self.no_upload
-            || self.server != DEFAULT_PROVIDER_URL
-            || self.connections.is_some()
-            || self.duration != 10
-            || self.ping_count != 20
-            || self.quick
-            || self.self_update
-    }
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let args = Args::parse();
+    let cmd = Args::command();
+    let matches = cmd.get_matches();
+    let args = Args::from_arg_matches(&matches).unwrap_or_else(|err| {
+        err.exit();
+    });
+
+    let has_flags = matches.ids().any(|id| {
+        let name = id.as_str();
+        if name == "debug" || name == "no_color" || name == "force_run" {
+            return false;
+        }
+        matches.value_source(name) == Some(clap::parser::ValueSource::CommandLine)
+    });
 
     let log_level = if args.debug { "debug" } else { "error" };
     tracing_subscriber::fmt()
@@ -152,7 +149,6 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let is_tty = console::Term::stdout().is_term();
-    let has_flags = args.has_any_action_flags();
     let show_menu = is_tty && !has_flags && !args.json;
 
     if show_menu {

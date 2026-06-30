@@ -79,6 +79,7 @@ pub async fn run_update(
     show_progress: bool,
 ) -> anyhow::Result<()> {
     use futures_util::StreamExt;
+    use sha2::{Digest, Sha256};
     use std::io::Write;
 
     let target_exe = std::env::var("SPEEDTEST_MOCK_EXE_PATH")
@@ -91,6 +92,23 @@ pub async fn run_update(
         .parent()
         .ok_or_else(|| anyhow::anyhow!("No parent directory for executable"))?;
     let temp_file_path = exe_dir.join(".speedtest-update.tmp");
+
+    // Fetch expected SHA-256 checksum first
+    let sha_url = format!("{}.sha256", download_url);
+    let sha_response = client.get(&sha_url).send().await?;
+    if !sha_response.status().is_success() {
+        anyhow::bail!("Failed to download checksum: {}", sha_response.status());
+    }
+    let expected_sha_raw = sha_response.text().await?;
+    let expected_sha = expected_sha_raw
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .to_lowercase();
+
+    if expected_sha.len() != 64 || !expected_sha.chars().all(|c| c.is_ascii_hexdigit()) {
+        anyhow::bail!("Invalid checksum format: '{}'", expected_sha_raw.trim());
+    }
 
     let response = client.get(download_url).send().await?;
     if !response.status().is_success() {
@@ -129,6 +147,21 @@ pub async fn run_update(
     // Ensure file is flushed and closed
     temp_file.sync_all()?;
     drop(temp_file);
+
+    // Compute SHA-256 checksum of downloaded binary
+    let mut temp_file_read = std::fs::File::open(&temp_file_path)?;
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut temp_file_read, &mut hasher)?;
+    let computed_sha = format!("{:x}", hasher.finalize());
+
+    if computed_sha != expected_sha {
+        let _ = std::fs::remove_file(&temp_file_path);
+        anyhow::bail!(
+            "Integrity check failed: checksum mismatch.\nExpected: {}\nComputed: {}",
+            expected_sha,
+            computed_sha
+        );
+    }
 
     if std::env::var("SPEEDTEST_MOCK_EXE_PATH").is_ok() {
         // In tests: copy the file because the mock binary isn't running
