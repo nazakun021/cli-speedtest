@@ -7,6 +7,8 @@ use std::time::Duration;
 use tracing::debug;
 
 pub const WARMUP_SECS: f64 = 2.0;
+pub const LOW_SPEED_THRESHOLD_MBPS: f64 = 0.01; // 10 Kbps
+pub const LOW_SPEED_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub fn create_spinner(msg: &str, config: &AppConfig, style_template: &str) -> ProgressBar {
     if config.quiet {

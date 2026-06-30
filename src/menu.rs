@@ -7,7 +7,7 @@ use dialoguer::theme::ColorfulTheme;
 use reqwest::Client;
 use std::sync::Arc;
 
-const DEFAULT_SERVER_URL: &str = "https://speed.cloudflare.com";
+const DEFAULT_PROVIDER_URL: &str = "https://speed.cloudflare.com";
 
 const ASCII_ART: &str = r#"
  ██████╗██╗     ██╗    ███████╗██████╗ ███████╗███████╗██████╗ ████████╗███████╗███████╗████████╗
@@ -23,11 +23,15 @@ const ASCII_ART_COMPACT: &str = "  CLI SPEEDTEST  -  v0.1.0";
 pub async fn run_menu(config: Arc<AppConfig>, client: Client) -> anyhow::Result<()> {
     let mut settings = MenuSettings::default();
 
+    // Silently check/perform auto-update before entering TUI loop
+    let _ = crate::updater::check_and_perform_auto_update(&client).await;
+
     loop {
         print_welcome(&config);
 
         let options = &[
             "Start Full Speed Test",
+            "Start Quick Speed Test",
             "Quick Ping Only",
             "Settings",
             "View Commands",
@@ -43,11 +47,12 @@ pub async fn run_menu(config: Arc<AppConfig>, client: Client) -> anyhow::Result<
 
         match selection {
             Some(0) => run_full_test(&settings, &config, &client).await?,
-            Some(1) => run_quick_ping(&settings, &config, &client).await?,
-            Some(2) => show_settings(&mut settings, &config)?,
-            Some(3) => show_commands(&config),
-            Some(4) => show_help(&config),
-            Some(5) | None => {
+            Some(1) => run_quick_test(&settings, &config, &client).await?,
+            Some(2) => run_quick_ping(&settings, &config, &client).await?,
+            Some(3) => show_settings(&mut settings, &config)?,
+            Some(4) => show_commands(&config),
+            Some(5) => show_help(&config),
+            Some(6) | None => {
                 clear_screen();
                 break;
             }
@@ -75,13 +80,84 @@ fn print_welcome(_config: &AppConfig) {
     );
 }
 
+fn check_cooldown_and_confirm(quick: bool) -> anyhow::Result<bool> {
+    use crate::cooldown::{CooldownStatus, enforce_cooldown_policy};
+
+    match enforce_cooldown_policy(quick, false) {
+        CooldownStatus::Allowed => Ok(true),
+        CooldownStatus::BlockedByCooldown { remaining_secs } => {
+            let confirm = dialoguer::Confirm::with_theme(&ColorfulTheme::default())
+                .with_prompt(format!(
+                    "Cooldown is active ({}s remaining). Force run?",
+                    remaining_secs
+                ))
+                .default(false)
+                .interact()?;
+            if confirm {
+                let _ = enforce_cooldown_policy(quick, true);
+                Ok(true)
+            } else {
+                Ok(false)
+            }
+        }
+        CooldownStatus::BlockedByBurstLimit { remaining_secs } => {
+            let confirm = dialoguer::Confirm::with_theme(&ColorfulTheme::default())
+                .with_prompt(format!(
+                    "Quick Burst limit reached ({}s remaining). Force run?",
+                    remaining_secs
+                ))
+                .default(false)
+                .interact()?;
+            if confirm {
+                let _ = enforce_cooldown_policy(quick, true);
+                Ok(true)
+            } else {
+                Ok(false)
+            }
+        }
+    }
+}
+
 async fn run_full_test(
     settings: &MenuSettings,
     config: &AppConfig,
     client: &Client,
 ) -> anyhow::Result<()> {
     clear_screen();
+    if !check_cooldown_and_confirm(settings.quick)? {
+        return Ok(());
+    }
+
+    clear_screen();
     let run_args = RunArgs::from(settings);
+    let app_config = Arc::new(AppConfig {
+        quiet: config.quiet,
+        color: settings.color,
+    });
+
+    crate::run(run_args, app_config, client.clone()).await?;
+
+    println!("\n  Press Enter to return to menu...");
+    wait_for_enter();
+    Ok(())
+}
+
+async fn run_quick_test(
+    settings: &MenuSettings,
+    config: &AppConfig,
+    client: &Client,
+) -> anyhow::Result<()> {
+    clear_screen();
+    if !check_cooldown_and_confirm(true)? {
+        return Ok(());
+    }
+
+    clear_screen();
+    println!("Running Quick Speed Test...\n");
+
+    let mut run_args = RunArgs::from(settings);
+    run_args.quick = true;
+
     let app_config = Arc::new(AppConfig {
         quiet: config.quiet,
         color: settings.color,
@@ -107,8 +183,13 @@ async fn run_quick_ping(
         color: settings.color,
     });
 
-    crate::client::test_ping_stats(client, DEFAULT_SERVER_URL, settings.ping_count, app_config)
-        .await?;
+    crate::client::test_ping_stats(
+        client,
+        DEFAULT_PROVIDER_URL,
+        settings.ping_count,
+        app_config,
+    )
+    .await?;
 
     println!("\n  Press Enter to return to menu...");
     wait_for_enter();
@@ -129,12 +210,16 @@ fn show_settings(settings: &mut MenuSettings, _config: &AppConfig) -> anyhow::Re
                 "Color Output         : {}",
                 if settings.color { "On" } else { "Off" }
             ),
+            format!(
+                "Default Test Mode    : {}",
+                if settings.quick { "Quick" } else { "Integrity" }
+            ),
             "<- Back to Main Menu".to_string(),
         ];
 
         let selection = Select::with_theme(&ColorfulTheme::default())
             .items(options)
-            .default(4)
+            .default(5)
             .interact_opt()?;
 
         match selection {
@@ -173,7 +258,15 @@ fn show_settings(settings: &mut MenuSettings, _config: &AppConfig) -> anyhow::Re
                     .interact()?;
                 settings.color = idx == 0;
             }
-            Some(4) | None => break,
+            Some(4) => {
+                let idx = Select::with_theme(&ColorfulTheme::default())
+                    .with_prompt("Default Test Mode")
+                    .items(&["Integrity (Standard)", "Quick (Warm-up bypassed)"])
+                    .default(if settings.quick { 1 } else { 0 })
+                    .interact()?;
+                settings.quick = idx == 1;
+            }
+            Some(5) | None => break,
             _ => unreachable!(),
         }
     }
@@ -201,7 +294,7 @@ fn show_commands(_config: &AppConfig) {
     println!(
         "  │ {} │",
         pad_to(
-            "    --server <URL>          Custom server base URL",
+            "    --server <URL>          Custom provider base URL",
             inner_w
         )
     );
@@ -380,6 +473,9 @@ fn clear_screen() {
 }
 
 fn wait_for_enter() {
+    if cfg!(test) {
+        return;
+    }
     use std::io::{self, BufRead};
     let mut _line = String::new();
     let _ = io::stdin().lock().read_line(&mut _line);
@@ -388,12 +484,62 @@ fn wait_for_enter() {
 impl From<&MenuSettings> for RunArgs {
     fn from(s: &MenuSettings) -> Self {
         RunArgs {
-            server_url: DEFAULT_SERVER_URL.to_string(),
+            provider_url: DEFAULT_PROVIDER_URL.to_string(),
             duration_secs: s.duration_secs,
             connections: Some(s.connections),
             ping_count: s.ping_count,
             no_download: false,
             no_upload: false,
+            quick: s.quick,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_menu_settings_to_run_args_mapping() {
+        let settings = MenuSettings {
+            quick: true,
+            ..Default::default()
+        };
+
+        let run_args = RunArgs::from(&settings);
+        assert!(run_args.quick, "quick flag should be mapped from settings");
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn test_run_full_test_prompts_on_active_cooldown() {
+        let _guard = crate::cooldown::TEST_ENV_LOCK.lock().unwrap();
+
+        let temp = tempfile::TempDir::new().unwrap();
+        unsafe {
+            std::env::set_var("SPEEDTEST_MOCK_DATA_DIR", temp.path());
+        }
+
+        // Record standard run completion to trigger cooldown block
+        let _ = crate::cooldown::record_run_completion(false);
+
+        let settings = MenuSettings::default();
+        let config = AppConfig {
+            quiet: true,
+            color: false,
+        };
+        let client = reqwest::Client::new();
+
+        // Attempting to run should prompt user via dialoguer, which fails/errors in non-TTY test
+        let res = run_full_test(&settings, &config, &client).await;
+        assert!(
+            res.is_err(),
+            "Should return error due to TTY prompt block, got: {:?}",
+            res
+        );
+
+        unsafe {
+            std::env::remove_var("SPEEDTEST_MOCK_DATA_DIR");
         }
     }
 }

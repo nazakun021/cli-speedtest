@@ -13,12 +13,13 @@ pub struct AppConfig {
 /// This is what allows integration tests to call `run()` without constructing CLI args.
 #[derive(Debug, Clone)]
 pub struct RunArgs {
-    pub server_url: String,
+    pub provider_url: String,
     pub duration_secs: u64,
     pub connections: Option<usize>,
     pub ping_count: u32,
     pub no_download: bool,
     pub no_upload: bool,
+    pub quick: bool,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -34,7 +35,8 @@ pub struct PingStats {
 pub struct SpeedTestResult {
     pub timestamp: String,
     pub version: String,
-    pub server_name: String,
+    #[serde(rename = "server_name")]
+    pub provider_name: String,
     pub ping: PingStats,
     // CHANGED: Option<f64> so skipped tests serialize as null / are absent
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -44,7 +46,7 @@ pub struct SpeedTestResult {
 }
 
 #[derive(Debug, Clone)]
-pub struct Server {
+pub struct Provider {
     pub name: String,
     pub base_url: String,
 }
@@ -56,6 +58,7 @@ pub struct MenuSettings {
     pub connections: usize, // default: 4
     pub ping_count: u32,    // default: 20
     pub color: bool,        // default: true
+    pub quick: bool,        // default: false
 }
 
 impl Default for MenuSettings {
@@ -65,6 +68,7 @@ impl Default for MenuSettings {
             connections: 4,
             ping_count: 20,
             color: true,
+            quick: false,
         }
     }
 }

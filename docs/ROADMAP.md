@@ -65,13 +65,35 @@ These issues were discovered in real-world multi-user testing. All items are now
 | P2.6-5 | Request pacing with random jitter           | ✅ Added |
 | P2.6-6 | User-Agent rotation                         | ✅ Added |
 | P2.6-7 | Local cooldown enforcement (disk-persisted) | ✅ Added |
-| P2.6-8 | Global test timeout as a safety net         | ✅ Added |
+| P2.6-8 | Global test timeout as a safety net         | ✅ Fixed |
 | P2.6-9 | Consistent error message with `--server`    | ✅ Fixed |
+| P2.6-10| Abort on slow connection (Progress timeout) | ✅ Fixed |
+
+---
+
+## ✅ Phase 2.7: Self-Update Mechanism (Completed)
+
+Ensure the tool is kept up-to-date in production using safe background/foreground binaries updates.
+
+| Item   | Description                                     | Status   |
+| ------ | ----------------------------------------------- | -------- |
+| P2.7-1 | GitHub Releases API client & SemVer checks      | ✅ Added |
+| P2.7-2 | Foreground update command (`--self-update`)     | ✅ Added |
+| P2.7-3 | Download progress bar rendering (`indicatif`)   | ✅ Added |
+| P2.7-4 | Safe self-replace executable swap               | ✅ Added |
+| P2.7-5 | 24-hour disk cache (`last_update_check`)        | ✅ Added |
+| P2.7-6 | Env overrides (`NO_UPDATE`/`CLI_SPEEDTEST_...`) | ✅ Added |
+| P2.7-7 | Silent post-test auto-update checks             | ✅ Added |
+| P2.7-8 | Interactive TUI startup check hook              | ✅ Added |
 
 ---
 
 ## 🚀 Phase 3: Advanced Features
 
+- [x] **Hybrid Mode (`--quick`)**: Allow bypassing 2s warm-up and 5-min cooldown
+      for instant results, as proposed in ADR 0003.
+- [ ] **TUI Feature Parity**: Add server selection and download/upload toggles
+      to the interactive menu to match CLI flag capabilities.
 - [ ] **Multi-Server Selection**: Automatically find the closest server or allow
       a list of servers to be tested sequentially, with automatic fallback if
       the primary server is rate-limited or unreachable.
@@ -95,11 +117,15 @@ These issues were discovered in real-world multi-user testing. All items are now
       and `cargo clippy -- -D warnings` on every push/PR.
 - [x] **Release Pipeline**: GitHub Action building binaries for Linux (amd64),
       Windows (amd64), macOS (Intel + ARM64) on version tags.
-- [ ] **README Update**: Document all CLI flags, installation methods
+- [x] **README Update**: Document all CLI flags, installation methods
       (`cargo install` + direct binary download), and show example output.
+- [ ] **Rendering Isolation Refactor**: Move UI updates to a dedicated task
+      using message passing (mpsc) to ensure measurement loops are zero-skew.
+- [ ] **Consistent Documentation**: Fix contradictions between CLI help text
+      and actual default connection counts (ADR 0001 alignment).
 - [ ] **Rustdoc**: Add doc-comments to all public functions. Enable
       `#![warn(missing_docs)]` in `lib.rs`.
-- [ ] **Unit Test Expansion**: Add tests covering the rate-limit short-circuit
+- [x] **Unit Test Expansion**: Add tests covering the rate-limit short-circuit
       behaviour from P2.6-1 and the cooldown logic from P2.6-7.
 - [ ] **Refine Error Handling**: Implement custom error types using `thiserror`
       for better programmatic error handling downstream.

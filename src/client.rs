@@ -14,7 +14,10 @@ use tokio_util::sync::CancellationToken;
 
 use crate::models::{AppConfig, PingStats};
 use crate::theme;
-use crate::utils::{NonRetryableError, WARMUP_SECS, calculate_mbps, create_spinner, with_retry};
+use crate::utils::{
+    LOW_SPEED_THRESHOLD_MBPS, LOW_SPEED_TIMEOUT, NonRetryableError, calculate_mbps, create_spinner,
+    with_retry,
+};
 
 // src/client.rs - shared helper used in both test_download and test_upload
 fn check_status(r: &reqwest::Response) -> anyhow::Result<()> {
@@ -124,6 +127,7 @@ pub async fn test_download(
     base_url: &str,
     duration_secs: u64,
     num_connections: usize,
+    warmup_secs: f64,
     config: Arc<AppConfig>,
 ) -> anyhow::Result<f64> {
     let chunk_size_bytes = 50 * 1024 * 1024;
@@ -181,7 +185,7 @@ pub async fn test_download(
                                 Some(Ok(chunk)) => {
                                     let len = chunk.len() as u64;
                                     pb.inc(len);
-                                    if start.elapsed().as_secs_f64() >= WARMUP_SECS {
+                                    if start.elapsed().as_secs_f64() >= warmup_secs {
                                         total_downloaded.fetch_add(len, Ordering::Relaxed);
                                     }
                                 }
@@ -209,20 +213,41 @@ pub async fn test_download(
         let token = token.clone();
         let config = config.clone();
         let barrier = barrier.clone();
+        let shared_start = shared_start.clone();
 
         tokio::spawn(async move {
             barrier.wait().await;
             let mut prev_bytes = 0;
             let mut prev_instant = Instant::now();
+            let mut low_speed_since: Option<Instant> = None;
 
             loop {
                 tokio::select! {
-                    _ = token.cancelled() => break,
+                    _ = token.cancelled() => break Ok(()),
                     _ = tokio::time::sleep(Duration::from_millis(250)) => {
                         let now_bytes = total_downloaded.load(Ordering::Relaxed);
                         let delta = now_bytes.saturating_sub(prev_bytes);
                         let elapsed = prev_instant.elapsed().as_secs_f64();
                         let speed = calculate_mbps(delta, elapsed);
+
+                        let start_elapsed = shared_start.get().map(|s| s.elapsed().as_secs_f64()).unwrap_or(0.0);
+
+                        if speed < LOW_SPEED_THRESHOLD_MBPS && start_elapsed > warmup_secs {
+                            if let Some(since) = low_speed_since {
+                                if since.elapsed() > LOW_SPEED_TIMEOUT {
+                                    return Err(anyhow::anyhow!(
+                                        "Connection too slow (below {:.2} Mbps for {}s). \
+                                         Aborting test.",
+                                        LOW_SPEED_THRESHOLD_MBPS,
+                                        LOW_SPEED_TIMEOUT.as_secs()
+                                    ));
+                                }
+                            } else {
+                                low_speed_since = Some(Instant::now());
+                            }
+                        } else {
+                            low_speed_since = None;
+                        }
 
                         let speed_str = if speed == 0.0 && now_bytes == 0 {
                             "↓  --.- Mbps".to_string()
@@ -244,18 +269,29 @@ pub async fn test_download(
         })
     };
 
-    tokio::time::sleep(Duration::from_secs(duration_secs)).await;
-    token.cancel();
+    let mut display_handle = display_task;
+    tokio::select! {
+        _ = tokio::time::sleep(Duration::from_secs(duration_secs)) => {
+            token.cancel();
+        }
+        res = &mut display_handle => {
+            token.cancel();
+            // If the display task finished (likely due to error), propagate it
+            if let Ok(Err(e)) = res {
+                return Err(e);
+            }
+        }
+    }
 
     for task in tasks {
         task.await??;
     }
-    display_task.await?;
+    display_handle.await??;
 
     pb.finish_and_clear();
 
     let start = shared_start.get().copied().unwrap_or_else(Instant::now);
-    let effective_duration = (start.elapsed().as_secs_f64() - WARMUP_SECS).max(0.0);
+    let effective_duration = (start.elapsed().as_secs_f64() - warmup_secs).max(0.0);
     Ok(calculate_mbps(
         total_downloaded.load(Ordering::Relaxed),
         effective_duration,
@@ -267,6 +303,7 @@ pub async fn test_upload(
     base_url: &str,
     duration_secs: u64,
     num_connections: usize,
+    warmup_secs: f64,
     config: Arc<AppConfig>,
 ) -> anyhow::Result<f64> {
     let chunk_size = 2 * 1024 * 1024;
@@ -320,7 +357,7 @@ pub async fn test_upload(
                     Ok(_) => {
                         let len = payload.len() as u64;
                         pb.inc(len);
-                        if start.elapsed().as_secs_f64() >= WARMUP_SECS {
+                        if start.elapsed().as_secs_f64() >= warmup_secs {
                             total_uploaded.fetch_add(len, Ordering::Relaxed);
                         }
                     }
@@ -344,20 +381,41 @@ pub async fn test_upload(
         let token = token.clone();
         let config = config.clone();
         let barrier = barrier.clone();
+        let shared_start = shared_start.clone();
 
         tokio::spawn(async move {
             barrier.wait().await;
             let mut prev_bytes = 0;
             let mut prev_instant = Instant::now();
+            let mut low_speed_since: Option<Instant> = None;
 
             loop {
                 tokio::select! {
-                    _ = token.cancelled() => break,
+                    _ = token.cancelled() => break Ok(()),
                     _ = tokio::time::sleep(Duration::from_millis(250)) => {
                         let now_bytes = total_uploaded.load(Ordering::Relaxed);
                         let delta = now_bytes.saturating_sub(prev_bytes);
                         let elapsed = prev_instant.elapsed().as_secs_f64();
                         let speed = calculate_mbps(delta, elapsed);
+
+                        let start_elapsed = shared_start.get().map(|s| s.elapsed().as_secs_f64()).unwrap_or(0.0);
+
+                        if speed < LOW_SPEED_THRESHOLD_MBPS && start_elapsed > warmup_secs {
+                            if let Some(since) = low_speed_since {
+                                if since.elapsed() > LOW_SPEED_TIMEOUT {
+                                    return Err(anyhow::anyhow!(
+                                        "Connection too slow (below {:.2} Mbps for {}s). \
+                                         Aborting test.",
+                                        LOW_SPEED_THRESHOLD_MBPS,
+                                        LOW_SPEED_TIMEOUT.as_secs()
+                                    ));
+                                }
+                            } else {
+                                low_speed_since = Some(Instant::now());
+                            }
+                        } else {
+                            low_speed_since = None;
+                        }
 
                         let speed_str = if speed == 0.0 && now_bytes == 0 {
                             "↑  --.- Mbps".to_string()
@@ -379,18 +437,28 @@ pub async fn test_upload(
         })
     };
 
-    tokio::time::sleep(Duration::from_secs(duration_secs)).await;
-    token.cancel();
+    let mut display_handle = display_task;
+    tokio::select! {
+        _ = tokio::time::sleep(Duration::from_secs(duration_secs)) => {
+            token.cancel();
+        }
+        res = &mut display_handle => {
+            token.cancel();
+            if let Ok(Err(e)) = res {
+                return Err(e);
+            }
+        }
+    }
 
     for task in tasks {
         task.await??;
     }
-    display_task.await?;
+    display_handle.await??;
 
     pb.finish_and_clear();
 
     let start = shared_start.get().copied().unwrap_or_else(Instant::now);
-    let effective_duration = (start.elapsed().as_secs_f64() - WARMUP_SECS).max(0.0);
+    let effective_duration = (start.elapsed().as_secs_f64() - warmup_secs).max(0.0);
     Ok(calculate_mbps(
         total_uploaded.load(Ordering::Relaxed),
         effective_duration,
