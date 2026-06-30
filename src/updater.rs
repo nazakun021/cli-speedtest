@@ -222,26 +222,53 @@ pub async fn check_and_perform_auto_update(client: &reqwest::Client) -> anyhow::
     let check_res = check_for_updates(client).await;
     match check_res {
         Ok(Some(info)) => {
-            eprintln!(
-                "[self-update] New version v{} found. Updating silently...",
-                info.version
-            );
-            match run_update(client, &info.download_url, false).await {
-                Ok(()) => {
-                    eprintln!("[self-update] Successfully updated to v{}!", info.version);
-                }
-                Err(e) => {
-                    let is_permission_err = e
-                        .downcast_ref::<std::io::Error>()
-                        .map(|io_err| io_err.kind() == std::io::ErrorKind::PermissionDenied)
-                        .unwrap_or(false);
-                    if is_permission_err {
-                        eprintln!(
-                            "[self-update] New version v{} is available, but update failed due to insufficient permissions. Please update manually.",
-                            info.version
-                        );
-                    } else {
-                        eprintln!("[self-update] Failed to update: {}", e);
+            let should_update = if std::env::var("SPEEDTEST_MOCK_EXE_PATH").is_ok() {
+                // In tests: auto-confirm update to keep tests deterministic and non-interactive
+                true
+            } else if console::Term::stdout().is_term() {
+                // In interactive TTY: prompt the user
+                let prompt_msg = format!("A new version v{} is available. Update now?", info.version);
+                dialoguer::Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
+                    .with_prompt(prompt_msg)
+                    .default(true)
+                    .interact_opt()
+                    .unwrap_or(Some(false))
+                    .unwrap_or(false)
+            } else {
+                // Fallback for non-TTY / background runs: do not auto-update
+                false
+            };
+
+            if should_update {
+                eprintln!(
+                    "[self-update] Downloading and updating to v{}...",
+                    info.version
+                );
+                match run_update(client, &info.download_url, false).await {
+                    Ok(()) => {
+                        eprintln!("[self-update] Successfully updated to v{}!", info.version);
+                        if std::env::var("SPEEDTEST_MOCK_EXE_PATH").is_err() {
+                            std::process::exit(0);
+                        }
+                    }
+                    Err(e) => {
+                        let is_permission_err = e
+                            .chain()
+                            .any(|cause| {
+                                if let Some(io_err) = cause.downcast_ref::<std::io::Error>() {
+                                    io_err.kind() == std::io::ErrorKind::PermissionDenied
+                                } else {
+                                    false
+                                }
+                            });
+                        if is_permission_err {
+                            eprintln!(
+                                "[self-update] New version v{} is available, but update failed due to insufficient permissions. Please update manually.",
+                                info.version
+                            );
+                        } else {
+                            eprintln!("[self-update] Failed to update: {}", e);
+                        }
                     }
                 }
             }
@@ -256,4 +283,26 @@ pub async fn check_and_perform_auto_update(client: &reqwest::Client) -> anyhow::
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_permission_denied_downcast_chain() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied");
+        let anyhow_err: anyhow::Error = io_err.into();
+        let wrapped_err = anyhow_err.context("failed to write file");
+
+        let is_permission_err = wrapped_err
+            .chain()
+            .any(|cause| {
+                if let Some(io_err) = cause.downcast_ref::<std::io::Error>() {
+                    io_err.kind() == std::io::ErrorKind::PermissionDenied
+                } else {
+                    false
+                }
+            });
+
+        assert!(is_permission_err, "Should correctly detect PermissionDenied even when wrapped with anyhow context");
+    }
 }

@@ -243,7 +243,5 @@ async fn run_app(
 
     let _ = cli_speedtest::cooldown::record_run_completion(args.quick);
 
-    let _ = cli_speedtest::updater::check_and_perform_auto_update(&client).await;
-
     Ok(result)
 }

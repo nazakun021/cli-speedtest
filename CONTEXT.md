@@ -56,7 +56,7 @@ _Avoid_: CLI bypass, auto-run routing.
 ## Distribution & Updates
 
 **Self-Update**:
-The mechanism by which the tool automatically detects, downloads, and applies a newer release of its own executable, triggered at most once in a 24-hour period after a test run.
+The mechanism by which the tool detects and updates its own executable. Triggered at most once in a 24-hour period on interactive TUI startup via a user confirmation prompt, or run manually in Direct Mode via the `--self-update` CLI option. Auto-updates are completely disabled for standard Direct Mode runs to avoid disrupting automated scripts/CI.
 _Avoid_: Auto-upgrade, software update, patch install.
 
 **Checksum Verification**:
