@@ -8,15 +8,16 @@ A production-grade, resilient CLI speedtest tool written in Rust. Designed for m
 
 - **Interactive by Default**: User-friendly TTY menu for manual tests and settings. Automatically switches to script-mode when flags are provided or in non-TTY environments.
 - **Resilient Network Engine**:
-  - **Provider-Friendly Design**: Built-in 5-minute local cooldown to ensure responsible usage of public infrastructure.
+  - **Provider-Friendly Design**: Built-in 5-minute local cooldown for standard runs. Supports **Quick Mode** (bypasses warm-up and standard cooldown) with a burst limit of 5 successive runs.
   - **Anti-Ban Hardening**: Implements User-Agent rotation and request pacing (jitter) to ensure consistent connectivity.
   - **Adaptive Fallback**: Automatically scales down to a single connection if rate-limited, ensuring the test completes even on restrictive networks.
 - **Production Grade Accuracy**:
-  - **Warm-up Phase**: Discards the first 2 seconds of transfer data to avoid TCP slow-start bias.
+  - **Warm-up Phase**: Discards the first 2 seconds of transfer data to avoid TCP slow-start bias (bypassed in Quick Mode).
   - **High Concurrency**: Multi-threaded engine using `tokio` tasks and `Barrier` synchronization to saturate high-speed links.
 - **Comprehensive Metrics**:
   - **Latency**: Min, Max, Average, Jitter, and Packet Loss.
   - **Throughput**: Real-time Mbps for both Download and Upload.
+- **Automatic Self-Updates**: Periodically checks for updates at startup (in interactive mode), prompts for confirmation, verifies signatures (SHA-256), and performs safe atomic updates.
 - **Visual Polish**: Semantic color-coding (Mbps/Ping thresholds) and live rolling-speed displays.
 - **Machine-Readable**: Use the `--json` flag for clean, parseable output perfect for cron jobs and monitoring.
 
@@ -98,18 +99,29 @@ cli-speedtest
 
 Pass any configuration flag to bypass the menu and run directly. Optimized for scripting and automation:
 
-| Flag                    | Description                                     | Default            |
-| ----------------------- | ----------------------------------------------- | ------------------ |
-| `-d, --duration <SECS>` | Length of the test in seconds                   | `10`               |
-| `-c, --connections <N>` | Number of parallel connections                  | `4` (DL), `2` (UL) |
-| `--server <URL>`        | Custom target server URL (Cloudflare-Optimized) | Cloudflare         |
-| `--ping-count <N>`      | Number of pings to send                         | `20`               |
-| `--no-download`         | Skip the download test                          | -                  |
-| `--no-upload`           | Skip the upload test                            | -                  |
-| `--json`                | Output results in JSON format                   | -                  |
-| `--no-color`            | Disable terminal styling                        | -                  |
-| `--debug`               | Enable verbose logging                          | -                  |
-| `--force-run`           | Bypass the local cooldown and run immediately   | -                  |
+| Flag                    | Description                                      | Default            |
+| ----------------------- | ------------------------------------------------ | ------------------ |
+| `-d, --duration <SECS>` | Length of the test in seconds                    | `10`               |
+| `-c, --connections <N>` | Number of parallel connections                   | `4` (DL), `2` (UL) |
+| `--server <URL>`        | Custom target server URL (Cloudflare-Optimized)  | Cloudflare         |
+| `--ping-count <N>`      | Number of pings to send                          | `20`               |
+| `--no-download`         | Skip the download test                           | -                  |
+| `--no-upload`           | Skip the upload test                             | -                  |
+| `--json`                | Output results in JSON format                    | -                  |
+| `--no-color`            | Disable terminal styling                         | -                  |
+| `--debug`               | Enable verbose logging                           | -                  |
+| `--force-run`           | Bypass the local cooldown and run immediately    | -                  |
+| `--quick`               | Bypass warm-up and cooldown (Quick Mode)         | -                  |
+| `--self-update`         | Check for updates and install latest immediately | -                  |
+
+### Environment Variables
+
+You can configure the tool using the following environment variables:
+
+| Variable                                 | Description                                                                            |
+| ---------------------------------------- | -------------------------------------------------------------------------------------- |
+| `NO_COLOR`                               | Disables ANSI terminal styling/coloring (also honors the standard `NO_COLOR` env var). |
+| `NO_UPDATE` or `CLI_SPEEDTEST_NO_UPDATE` | Disables automated background update checks on startup.                                |
 
 ### Examples
 
@@ -126,7 +138,7 @@ cli-speedtest --server https://your-custom-speedtest-server.com
 
 ## JSON Output Schema
 
-When running with `--json`, the tool returns a structured object:
+When running with `--json`, the tool returns a structured object. Note that latency limits `min_ms` and `max_ms` are integers (`u128`). Throughputs `download_mbps` and `upload_mbps` are optional and will be completely omitted from the JSON output if their respective tests are skipped (e.g., via `--no-download` or `--no-upload`).
 
 ```json
 {
@@ -134,8 +146,8 @@ When running with `--json`, the tool returns a structured object:
   "version": "0.1.0",
   "server_name": "Cloudflare",
   "ping": {
-    "min_ms": 10.5,
-    "max_ms": 25.2,
+    "min_ms": 10,
+    "max_ms": 25,
     "avg_ms": 15.1,
     "jitter_ms": 2.3,
     "packet_loss_pct": 0.0
@@ -174,6 +186,7 @@ RUST_LOG=debug cargo test
 - `src/lib.rs`: Core orchestration logic and adaptive concurrency fallback.
 - `src/client.rs`: High-concurrency network architecture and request pacing (jitter).
 - `src/cooldown.rs`: Disk-persisted local cooldown enforcement.
+- `src/updater.rs`: Performs GitHub release checking, checksum validation, and self-updating.
 - `src/menu.rs`: Interactive TTY menu and settings.
 - `src/models.rs`: Data structures and JSON serialization models.
 - `src/utils.rs`: Technical constants (like `WARMUP_SECS`) and measurement math.
