@@ -1,23 +1,24 @@
 # CLI Speedtest (Rust)
 
-A blazing-fast, high-performance CLI speedtest tool written in Rust. Designed for modern developers and system administrators who need accurate, machine-readable network performance metrics without the bloat.
+A production-grade, resilient CLI speedtest tool written in Rust. Designed for modern developers and system administrators who need accurate, machine-readable network performance metrics without the bloat—optimized for reliability against public infrastructure.
 
 [![Release](https://github.com/nazakun021/cli-speedtest/actions/workflows/release.yml/badge.svg)](https://github.com/nazakun021/cli-speedtest/actions/workflows/release.yml)
 
 ## Features
 
-- **Interactive Menu**: User-friendly TTY menu for quick tests, settings, and help.
-- **Blazing Fast**: Powered by `tokio` for asynchronous, non-blocking I/O.
-- **High Concurrency**: Multi-threaded download and upload tests using `tokio` tasks and `Barrier` synchronization to saturate high-speed connections.
-- **Production Grade**:
-  - **Warm-up Phase**: Includes a 2-second warm-up period to avoid TCP slow-start bias for more consistent results.
-  - **Retry Logic**: Built-in exponential backoff for failed network requests.
+- **Interactive by Default**: User-friendly TTY menu for manual tests and settings. Automatically switches to script-mode when flags are provided or in non-TTY environments.
+- **Resilient Network Engine**:
+  - **Provider-Friendly Design**: Built-in 5-minute local cooldown to ensure responsible usage of public infrastructure.
+  - **Anti-Ban Hardening**: Implements User-Agent rotation and request pacing (jitter) to ensure consistent connectivity.
+  - **Adaptive Fallback**: Automatically scales down to a single connection if rate-limited, ensuring the test completes even on restrictive networks.
+- **Production Grade Accuracy**:
+  - **Warm-up Phase**: Discards the first 2 seconds of transfer data to avoid TCP slow-start bias.
+  - **High Concurrency**: Multi-threaded engine using `tokio` tasks and `Barrier` synchronization to saturate high-speed links.
 - **Comprehensive Metrics**:
   - **Latency**: Min, Max, Average, Jitter, and Packet Loss.
   - **Throughput**: Real-time Mbps for both Download and Upload.
-- **Visual Polish**: Semantic color-coding and live rolling-speed displays.
+- **Visual Polish**: Semantic color-coding (Mbps/Ping thresholds) and live rolling-speed displays.
 - **Machine-Readable**: Use the `--json` flag for clean, parseable output perfect for cron jobs and monitoring.
-- **Graceful Degradation**: Automatically disables color and interactive features when piped or in non-TTY environments. Respects the `NO_COLOR` environment variable.
 
 ## Installation
 
@@ -85,38 +86,38 @@ The binary will be available at `target/release/cli-speedtest`.
 
 ## Usage
 
-### Interactive Mode
+### Interactive Mode (Human Interface)
 
-Simply run the installed binary without flags to enter the interactive menu:
+Simply run the installed binary without flags to enter the interactive menu for manual checks:
 
 ```zsh
 cli-speedtest
 ```
 
-### Direct Run (Scripting Friendly)
+### Direct Mode (Machine Interface)
 
-Pass any configuration flag to bypass the menu and run directly:
+Pass any configuration flag to bypass the menu and run directly. Optimized for scripting and automation:
 
-| Flag                    | Description                                   | Default            |
-| ----------------------- | --------------------------------------------- | ------------------ |
-| `-d, --duration <SECS>` | Length of the test in seconds                 | `10`               |
-| `-c, --connections <N>` | Number of parallel connections                | `8` (DL), `4` (UL) |
-| `--server <URL>`        | Custom target server URL                      | Cloudflare         |
-| `--ping-count <N>`      | Number of pings to send                       | `20`               |
-| `--no-download`         | Skip the download test                        | -                  |
-| `--no-upload`           | Skip the upload test                          | -                  |
-| `--json`                | Output results in JSON format                 | -                  |
-| `--no-color`            | Disable terminal styling                      | -                  |
-| `--debug`               | Enable verbose logging                        | -                  |
-| `--force-run`           | Bypass the local cooldown and run immediately | -                  |
+| Flag                    | Description                                     | Default            |
+| ----------------------- | ----------------------------------------------- | ------------------ |
+| `-d, --duration <SECS>` | Length of the test in seconds                   | `10`               |
+| `-c, --connections <N>` | Number of parallel connections                  | `4` (DL), `2` (UL) |
+| `--server <URL>`        | Custom target server URL (Cloudflare-Optimized) | Cloudflare         |
+| `--ping-count <N>`      | Number of pings to send                         | `20`               |
+| `--no-download`         | Skip the download test                          | -                  |
+| `--no-upload`           | Skip the upload test                            | -                  |
+| `--json`                | Output results in JSON format                   | -                  |
+| `--no-color`            | Disable terminal styling                        | -                  |
+| `--debug`               | Enable verbose logging                          | -                  |
+| `--force-run`           | Bypass the local cooldown and run immediately   | -                  |
 
 ### Examples
 
 ```zsh
-# Run a 5-second test with 12 connections
+# Run a 5-second test with 12 connections (Bypasses auto-defaults)
 cli-speedtest --duration 5 --connections 12
 
-# Skip upload test and get JSON output
+# Skip upload test and get JSON output for monitoring
 cli-speedtest --no-upload --json
 
 # Use a custom server
@@ -146,13 +147,14 @@ When running with `--json`, the tool returns a structured object:
 
 ## How It Works
 
-Under the hood, `cli-speedtest` is built for maximum throughput and accuracy, utilizing Rust's powerful asynchronous ecosystem:
+`cli-speedtest` is built on standard HTTP primitives, optimized for the Cloudflare infrastructure but designed for future provider extensibility:
 
-1. **Ping Phase**: The tool sends lightweight HTTP requests to the target server to measure cold latency. It records minimum, maximum, average latency, and calculates jitter and packet loss.
-2. **Download Phase**: Spawns multiple concurrent `tokio` tasks (default: 8) that independently stream chunks of data from the target server. A shared atomic counter tracks total bytes received in real-time.
-3. **Upload Phase**: Spawns concurrent tasks (default: 4) that generate random, uncompressible payload data in-memory and POST them to the server. This guarantees that network compression doesn't skew the results.
-4. **Warm-up Period**: Before calculating the final speed, the engine discards the results from the first 2 seconds (the warm-up phase). This avoids TCP slow-start artifacts and ensures we're measuring the saturated connection speed.
-5. **Real-time Engine**: A periodic tick (e.g., every 100ms) polls the byte counters and calculates the rolling window throughput to display the live speed on your terminal.
+1. **Ping Phase**: Measures cold latency using lightweight HEAD requests. Calculates min, max, average, jitter, and packet loss.
+2. **Download Phase**: Spawns concurrent `tokio` tasks that stream chunks from the provider. Implements **request pacing** to break machine-like patterns.
+3. **Upload Phase**: Generates random, uncompressible payload data in-memory and POSTs to the provider, ensuring network compression doesn't skew throughput results.
+4. **Resiliency Layer**: If the provider returns a rate-limit signal (HTTP 429), the engine fails fast with clear guidance or automatically falls back to a single-connection retry if appropriate.
+5. **Warm-up Period**: Discards results from the first 2 seconds (the warm-up phase) to ensure measurements reflect saturated connection speeds, not TCP slow-start artifacts.
+6. **Real-time Engine**: A periodic tick polls atomic byte counters to display live rolling-window throughput.
 
 ## Testing
 
@@ -168,10 +170,11 @@ RUST_LOG=debug cargo test
 
 ## Project Structure
 
-- `src/main.rs`: Entry point and CLI routing logic using `clap`.
-- `src/lib.rs`: Core orchestration logic for ping, download, and upload phases.
-- `src/client.rs`: High-concurrency network architecture using `tokio` and `reqwest`.
-- `src/menu.rs`: Interactive TTY menu and settings using `dialoguer`.
+- `src/main.rs`: Entry point and CLI routing; manages User-Agent rotation and global timeouts.
+- `src/lib.rs`: Core orchestration logic and adaptive concurrency fallback.
+- `src/client.rs`: High-concurrency network architecture and request pacing (jitter).
+- `src/cooldown.rs`: Disk-persisted local cooldown enforcement.
+- `src/menu.rs`: Interactive TTY menu and settings.
 - `src/models.rs`: Data structures and JSON serialization models.
 - `src/utils.rs`: Technical constants (like `WARMUP_SECS`) and measurement math.
 - `src/theme.rs`: ANSI color system and UI rendering helpers.
@@ -182,27 +185,11 @@ We welcome contributions! Whether it's adding new features, fixing bugs, or impr
 
 ### Local Development Setup
 
-1. **Fork & Clone**: Fork the repository on GitHub and clone your fork locally:
-
-   ```zsh
-   git clone https://github.com/nazakun021/cli-speedtest.git
-   cd cli-speedtest
-   ```
-
-2. **Build the Project**: Compile the binary.
-
-   ```zsh
-   cargo build
-   ```
-
-3. **Run the Binary**: Test your changes locally. You can use the `--debug` flag for verbose output!
-   ```zsh
-   cargo run -- --debug
-   ```
+1. **Fork & Clone**: Fork the repository on GitHub and clone your fork locally.
+2. **Build the Project**: `cargo build`
+3. **Run the Binary**: `cargo run -- --debug`
 
 ### Code Style & Quality
-
-Before submitting a pull request, please ensure your code adheres to standard Rust formatting and linting rules:
 
 ```zsh
 cargo fmt        # Auto-format your code
@@ -210,17 +197,10 @@ cargo clippy     # Run the linter
 cargo test       # Ensure all tests pass
 ```
 
-### Submitting a Pull Request
-
-1. Create a new branch: `git checkout -b feature/your-feature-name`
-2. Commit your changes: `git commit -m "feat: add new awesome feature"`
-3. Push to your branch: `git push origin feature/your-feature-name`
-4. Open a Pull Request on GitHub!
-
 ## License
 
-Distributed under the Apache License 2.0. See `LICENSE` for more information.
+This project is dual-licensed under the MIT and Apache 2.0 licenses. See `LICENSE-MIT` and `LICENSE-APACHE` for more information.
 
 ---
 
-Built with ❤️ by [Tirso Benedict J. Naza](https://github.com/nazakun021)
+Built by [Tirso Benedict J. Naza](https://github.com/nazakun021)

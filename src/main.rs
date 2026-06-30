@@ -12,7 +12,7 @@ use cli_speedtest::models::{AppConfig, RunArgs};
 const CONNECT_TIMEOUT_SECS: u64 = 10;
 const REQUEST_TIMEOUT_SECS: u64 = 30;
 const GLOBAL_TEST_TIMEOUT_SECS: u64 = 120; // 2 minutes hard maximum
-const DEFAULT_SERVER_URL: &str = "https://speed.cloudflare.com";
+const DEFAULT_PROVIDER_URL: &str = "https://speed.cloudflare.com";
 
 /// A blazing fast CLI Speedtest written in Rust
 #[derive(Parser, Debug, Clone)]
@@ -23,12 +23,12 @@ struct Args {
     duration: u64,
 
     /// Number of parallel connections for testing
-    /// (default: 8 for download, 4 for upload; applies equally to both when set explicitly)
+    /// (default: 4 for download, 2 for upload; applies equally to both when set explicitly)
     #[arg(short, long)]
     connections: Option<usize>,
 
     /// Custom server base URL - must expose /__down, /__up, and /cdn-cgi/trace
-    #[arg(long, default_value = DEFAULT_SERVER_URL)]
+    #[arg(long, default_value = DEFAULT_PROVIDER_URL)]
     server: String,
 
     /// Skip the download test
@@ -58,6 +58,14 @@ struct Args {
     /// Bypass the local cooldown and run the test immediately
     #[arg(long, default_value_t = false)]
     force_run: bool,
+
+    /// Bypass warm-up and cooldown (Quick Mode)
+    #[arg(long, default_value_t = false)]
+    quick: bool,
+
+    /// Check for updates and install the latest version immediately
+    #[arg(long, default_value_t = false)]
+    self_update: bool,
 }
 
 impl Args {
@@ -66,10 +74,12 @@ impl Args {
     fn has_any_action_flags(&self) -> bool {
         self.no_download
             || self.no_upload
-            || self.server != DEFAULT_SERVER_URL
+            || self.server != DEFAULT_PROVIDER_URL
             || self.connections.is_some()
             || self.duration != 10
             || self.ping_count != 20
+            || self.quick
+            || self.self_update
     }
 }
 
@@ -84,6 +94,38 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     debug!("Application started with args: {:?}", args);
+
+    if args.self_update {
+        eprintln!("Checking for updates...");
+        let client = Client::builder()
+            .connect_timeout(Duration::from_secs(CONNECT_TIMEOUT_SECS))
+            .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
+            .build()?;
+        match cli_speedtest::updater::check_for_updates(&client).await {
+            Ok(Some(info)) => {
+                eprintln!(
+                    "New version v{} found! Downloading and updating...",
+                    info.version
+                );
+                if let Err(e) =
+                    cli_speedtest::updater::run_update(&client, &info.download_url, true).await
+                {
+                    eprintln!("Error during update: {}", e);
+                    std::process::exit(1);
+                }
+                eprintln!("Successfully updated to v{}!", info.version);
+                std::process::exit(0);
+            }
+            Ok(None) => {
+                eprintln!("Already up-to-date (v{}).", env!("CARGO_PKG_VERSION"));
+                std::process::exit(0);
+            }
+            Err(e) => {
+                eprintln!("Error checking for updates: {}", e);
+                std::process::exit(1);
+            }
+        }
+    }
 
     const USER_AGENTS: &[&str] = &[
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -168,14 +210,23 @@ async fn run_app(
         println!("Starting Rust Speedtest...\n");
     }
 
-    if !args.force_run {
-        if let Some(remaining) = cli_speedtest::cooldown::cooldown_remaining(
-            cli_speedtest::cooldown::DEFAULT_COOLDOWN_SECS,
-        ) {
+    use cli_speedtest::cooldown::{CooldownStatus, enforce_cooldown_policy};
+
+    match enforce_cooldown_policy(args.quick, args.force_run) {
+        CooldownStatus::Allowed => {}
+        CooldownStatus::BlockedByCooldown { remaining_secs } => {
             eprintln!(
                 "Cooldown active. Last test ran recently.\n   \
                  Wait {} more minutes, or override with: speedtest --force-run",
-                remaining / 60 + 1
+                remaining_secs / 60 + 1
+            );
+            std::process::exit(1);
+        }
+        CooldownStatus::BlockedByBurstLimit { remaining_secs } => {
+            eprintln!(
+                "Quick Burst limit reached (5 successive tests). Enforcing 5-minute cooldown.\n   \
+                 Wait {} more minutes, or override with: speedtest --force-run",
+                remaining_secs / 60 + 1
             );
             std::process::exit(1);
         }
@@ -183,17 +234,20 @@ async fn run_app(
 
     // Convert CLI args into the lib's RunArgs - keeps clap out of the library
     let run_args = RunArgs {
-        server_url: args.server,
+        provider_url: args.server,
         duration_secs: args.duration,
         connections: args.connections,
         ping_count: args.ping_count,
         no_download: args.no_download,
         no_upload: args.no_upload,
+        quick: args.quick,
     };
 
-    let result = cli_speedtest::run(run_args, config, client).await?;
+    let result = cli_speedtest::run(run_args, config, client.clone()).await?;
 
-    let _ = cli_speedtest::cooldown::record_successful_run();
+    let _ = cli_speedtest::cooldown::record_run_completion(args.quick);
+
+    let _ = cli_speedtest::updater::check_and_perform_auto_update(&client).await;
 
     Ok(result)
 }

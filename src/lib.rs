@@ -5,15 +5,16 @@ pub mod cooldown;
 pub mod menu;
 pub mod models;
 pub mod theme;
+pub mod updater;
 pub mod utils;
 
 use chrono::Utc;
-use models::{AppConfig, RunArgs, Server, SpeedTestResult};
+use models::{AppConfig, Provider, RunArgs, SpeedTestResult};
 use reqwest::Client;
 use std::sync::Arc;
 use utils::{NonRetryableError, WARMUP_SECS};
 
-const DEFAULT_SERVER_URL: &str = "https://speed.cloudflare.com";
+const DEFAULT_PROVIDER_URL: &str = "https://speed.cloudflare.com";
 
 async fn run_with_fallback_concurrency<F, Fut>(
     initial_conns: usize,
@@ -46,13 +47,19 @@ where
 }
 
 /// Core application logic - fully decoupled from clap so integration tests can
-/// call it directly with a mockito server URL via `RunArgs::server_url`.
+/// call it directly with a mockito server URL via `RunArgs::provider_url`.
 pub async fn run(
     args: RunArgs,
     config: Arc<AppConfig>,
     client: Client,
 ) -> anyhow::Result<SpeedTestResult> {
-    if args.duration_secs <= WARMUP_SECS as u64 {
+    let warmup_secs = if args.quick { 0.0 } else { WARMUP_SECS };
+
+    if args.quick {
+        if args.duration_secs == 0 {
+            anyhow::bail!("Duration must be greater than 0 seconds. Got: 0s");
+        }
+    } else if args.duration_secs <= WARMUP_SECS as u64 {
         anyhow::bail!(
             "Duration must be greater than {} seconds (warm-up period). Got: {}s",
             WARMUP_SECS,
@@ -65,24 +72,24 @@ pub async fn run(
     }
 
     // Derive display name: if the URL is the default, label it "Cloudflare";
-    // otherwise show the URL itself so users know which custom server was used.
-    let server = Server {
-        name: if args.server_url == DEFAULT_SERVER_URL {
+    // otherwise show the URL itself so users know which custom provider was used.
+    let provider = Provider {
+        name: if args.provider_url == DEFAULT_PROVIDER_URL {
             "Cloudflare".into()
         } else {
-            args.server_url.clone()
+            args.provider_url.clone()
         },
-        base_url: args.server_url.clone(),
+        base_url: args.provider_url.clone(),
     };
 
     if !config.quiet {
-        println!("Using server: {}\n", server.name);
+        println!("Using provider: {}\n", provider.name);
     }
 
     // --- Ping / Jitter / Packet Loss ---
     let ping_stats = client::test_ping_stats(
         &client,
-        &server.base_url,
+        &provider.base_url,
         args.ping_count,
         Arc::clone(&config),
     )
@@ -100,9 +107,10 @@ pub async fn run(
         let speed = run_with_fallback_concurrency(conns, config_clone, "Download", |c| {
             client::test_download(
                 &client,
-                &server.base_url,
+                &provider.base_url,
                 args.duration_secs,
                 c,
+                warmup_secs,
                 Arc::clone(&config),
             )
         })
@@ -125,9 +133,10 @@ pub async fn run(
         let speed = run_with_fallback_concurrency(conns, config_clone, "Upload", |c| {
             client::test_upload(
                 &client,
-                &server.base_url,
+                &provider.base_url,
                 args.duration_secs,
                 c,
+                warmup_secs,
                 Arc::clone(&config),
             )
         })
@@ -148,14 +157,14 @@ pub async fn run(
         println!("║{:^width$}║", "Test Summary", width = inner_width);
         println!("╠{}╣", "═".repeat(inner_width));
 
-        // Server Row
-        let server_label = "  Server     : ";
-        let server_val_width = inner_width - server_label.len() - 1;
-        let truncated_server = theme::truncate_to(&server.name, server_val_width);
+        // Provider Row
+        let provider_label = "  Provider   : ";
+        let provider_val_width = inner_width - provider_label.len() - 1;
+        let truncated_provider = theme::truncate_to(&provider.name, provider_val_width);
         println!(
             "║{}{} ║",
-            server_label,
-            theme::pad_to(&truncated_server, server_val_width),
+            provider_label,
+            theme::pad_to(&truncated_provider, provider_val_width),
         );
 
         println!("╠{}╣", "═".repeat(inner_width));
@@ -225,7 +234,7 @@ pub async fn run(
     Ok(SpeedTestResult {
         timestamp: Utc::now().to_rfc3339(),
         version: env!("CARGO_PKG_VERSION").to_string(),
-        server_name: server.name,
+        provider_name: provider.name,
         ping: ping_stats,
         download_mbps: down_speed,
         upload_mbps: up_speed,
