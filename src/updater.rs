@@ -227,7 +227,8 @@ pub async fn check_and_perform_auto_update(client: &reqwest::Client) -> anyhow::
                 true
             } else if console::Term::stdout().is_term() {
                 // In interactive TTY: prompt the user
-                let prompt_msg = format!("A new version v{} is available. Update now?", info.version);
+                let prompt_msg =
+                    format!("A new version v{} is available. Update now?", info.version);
                 dialoguer::Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
                     .with_prompt(prompt_msg)
                     .default(true)
@@ -252,15 +253,13 @@ pub async fn check_and_perform_auto_update(client: &reqwest::Client) -> anyhow::
                         }
                     }
                     Err(e) => {
-                        let is_permission_err = e
-                            .chain()
-                            .any(|cause| {
-                                if let Some(io_err) = cause.downcast_ref::<std::io::Error>() {
-                                    io_err.kind() == std::io::ErrorKind::PermissionDenied
-                                } else {
-                                    false
-                                }
-                            });
+                        let is_permission_err = e.chain().any(|cause| {
+                            if let Some(io_err) = cause.downcast_ref::<std::io::Error>() {
+                                io_err.kind() == std::io::ErrorKind::PermissionDenied
+                            } else {
+                                false
+                            }
+                        });
                         if is_permission_err {
                             eprintln!(
                                 "[self-update] New version v{} is available, but update failed due to insufficient permissions. Please update manually.",
@@ -293,16 +292,17 @@ mod tests {
         let anyhow_err: anyhow::Error = io_err.into();
         let wrapped_err = anyhow_err.context("failed to write file");
 
-        let is_permission_err = wrapped_err
-            .chain()
-            .any(|cause| {
-                if let Some(io_err) = cause.downcast_ref::<std::io::Error>() {
-                    io_err.kind() == std::io::ErrorKind::PermissionDenied
-                } else {
-                    false
-                }
-            });
+        let is_permission_err = wrapped_err.chain().any(|cause| {
+            if let Some(io_err) = cause.downcast_ref::<std::io::Error>() {
+                io_err.kind() == std::io::ErrorKind::PermissionDenied
+            } else {
+                false
+            }
+        });
 
-        assert!(is_permission_err, "Should correctly detect PermissionDenied even when wrapped with anyhow context");
+        assert!(
+            is_permission_err,
+            "Should correctly detect PermissionDenied even when wrapped with anyhow context"
+        );
     }
 }
