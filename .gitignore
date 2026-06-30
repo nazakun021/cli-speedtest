@@ -1,2 +1,22 @@
 /target
 Cargo.lock
+repomix-output.xml
+
+# Agent Persistence
+docs/resume.md
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# IDE and editor settings
+.vscode/
+.idea/
+*.swp
+*.iml
+
+# Temp / Log files
+*.log
+*.tmp
+*.bak
+.speedtest-update.tmp
