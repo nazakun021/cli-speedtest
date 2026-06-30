@@ -23,7 +23,7 @@ const ASCII_ART_COMPACT: &str = "  CLI SPEEDTEST  -  v0.1.0";
 pub async fn run_menu(config: Arc<AppConfig>, client: Client) -> anyhow::Result<()> {
     let mut settings = MenuSettings::default();
 
-    // Silently check/perform auto-update before entering TUI loop
+    // Check/prompt for updates on startup before entering TUI loop
     let _ = crate::updater::check_and_perform_auto_update(&client).await;
 
     loop {

@@ -83,8 +83,8 @@ Ensure the tool is kept up-to-date in production using safe background/foregroun
 | P2.7-4 | Safe self-replace executable swap               | ✅ Added |
 | P2.7-5 | 24-hour disk cache (`last_update_check`)        | ✅ Added |
 | P2.7-6 | Env overrides (`NO_UPDATE`/`CLI_SPEEDTEST_...`) | ✅ Added |
-| P2.7-7 | Silent post-test auto-update checks             | ✅ Added |
-| P2.7-8 | Interactive TUI startup check hook              | ✅ Added |
+| P2.7-7 | Interactive TUI startup update prompt           | ✅ Added |
+| P2.7-8 | Direct Mode auto-update bypass                  | ✅ Added |
 
 ---
 
