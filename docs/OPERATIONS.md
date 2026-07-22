@@ -9,6 +9,12 @@ This document describes the current operational contract of `cli-speedtest` v0.1
 - **JSON output** is written to stdout. A successful run emits a result object. A failed run emits `{ "error": "..." }` and exits with status `1`. Cancellation exits with status `130`.
 - **Diagnostic output** and interactive progress are written to stderr or suppressed by `--json`; do not parse human-readable output in automation.
 
+## Interactive TUI
+
+The main menu displays the active measurement mode, duration, connection count, ping probes, and Cooldown state before a test starts. **Run Configured Test** respects the selected Default Test Mode. **Run One-Off Quick Test** always runs Quick Mode and explains that Warm-up is skipped and successful runs count toward the five-test Quick Burst limit.
+
+Commands and the results guide use framed panels on normal terminals and a compact unboxed layout below 64 columns. Server selection and download/upload toggles remain Direct Mode capabilities; they are not yet available in Interactive Settings.
+
 ## Provider-Friendly Operation
 
 The default Cloudflare provider is shared infrastructure. A successful Integrity Mode test records a local **Cooldown** of five minutes. Quick Mode bypasses the Warm-up and standard Cooldown, but only permits one **Quick Burst** of five successful tests before the same Cooldown applies. `--force-run` is an explicit override that also resets the Quick Burst count; reserve it for intentional troubleshooting.

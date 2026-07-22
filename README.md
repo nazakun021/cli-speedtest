@@ -6,7 +6,7 @@ A production-grade, resilient CLI speedtest tool written in Rust. Designed for m
 
 ## Features
 
-- **Interactive by Default**: User-friendly TTY menu for manual tests and settings. Automatically switches to script-mode when flags are provided or in non-TTY environments.
+- **Interactive by Default**: User-friendly TTY menu for manual tests and settings. It shows the selected mode, duration, connections, ping probes, and Cooldown state before a test. Automatically switches to script-mode when flags are provided or in non-TTY environments.
 - **Resilient Network Engine**:
   - **Provider-Friendly Design**: Built-in 5-minute local cooldown for standard runs. Supports **Quick Mode** (bypasses warm-up and standard cooldown) with a burst limit of 5 successive runs.
   - **Anti-Ban Hardening**: Implements User-Agent rotation and request pacing (jitter) to ensure consistent connectivity.
@@ -94,6 +94,8 @@ Simply run the installed binary without flags to enter the interactive menu for 
 ```zsh
 cli-speedtest
 ```
+
+The main menu distinguishes a **Configured Test** from a one-off **Quick Test**. Quick Mode skips Warm-up, so it provides a faster estimate and consumes one successful run from the five-test Quick Burst limit. Commands and the results guide use a compact unboxed layout on narrow terminals.
 
 ### Direct Mode (Machine Interface)
 

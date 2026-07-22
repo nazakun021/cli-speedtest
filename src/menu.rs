@@ -42,11 +42,11 @@ where
     let _ = crate::updater::check_and_perform_auto_update(&client).await;
 
     loop {
-        print_welcome(&config);
+        print_welcome(&settings);
         let selection = select_main_menu()?;
 
         match selection {
-            Some(0) => run_full_test(&settings, &config, &client).await?,
+            Some(0) => run_configured_test(&settings, &config, &client).await?,
             Some(1) => run_quick_test(&settings, &config, &client).await?,
             Some(2) => run_quick_ping(&settings, &config, &client).await?,
             Some(3) => show_settings(&mut settings, &config)?,
@@ -65,8 +65,8 @@ where
 
 fn select_main_menu() -> anyhow::Result<Option<usize>> {
     let options = [
-        "Start Full Speed Test",
-        "Start Quick Speed Test",
+        "Run Configured Test",
+        "Run One-Off Quick Test",
         "Quick Ping Only",
         "Settings",
         "View Commands",
@@ -81,7 +81,7 @@ fn select_main_menu() -> anyhow::Result<Option<usize>> {
         .interact_opt()?)
 }
 
-fn print_welcome(_config: &AppConfig) {
+fn print_welcome(settings: &MenuSettings) {
     clear_screen();
     let term_width = console::Term::stdout().size().1 as usize;
 
@@ -100,6 +100,40 @@ fn print_welcome(_config: &AppConfig) {
         "  v{}  -  Cloudflare backend  -  github.com/nazakun021/cli-speedtest\n",
         env!("CARGO_PKG_VERSION")
     );
+
+    println!("  Config: {}", configured_test_summary(settings));
+    println!("  {}\n", cooldown_summary(settings));
+}
+
+fn configured_test_summary(settings: &MenuSettings) -> String {
+    let mode = if settings.quick {
+        "Quick (warm-up bypassed)"
+    } else {
+        "Integrity"
+    };
+    format!(
+        "{}  |  {}s  |  {} connections  |  {} ping probes",
+        mode, settings.duration_secs, settings.connections, settings.ping_count
+    )
+}
+
+fn cooldown_summary(settings: &MenuSettings) -> String {
+    use crate::cooldown::{CooldownStatus, current_cooldown_status};
+
+    match current_cooldown_status(settings.quick) {
+        CooldownStatus::Allowed if settings.quick => "Quick Burst available (limit: 5)",
+        CooldownStatus::Allowed => "Cooldown ready",
+        CooldownStatus::BlockedByCooldown { remaining_secs } => {
+            return format!("Cooldown: {} minute(s) remaining", remaining_secs / 60 + 1);
+        }
+        CooldownStatus::BlockedByBurstLimit { remaining_secs } => {
+            return format!(
+                "Quick Burst limit reached: {} minute(s) remaining",
+                remaining_secs / 60 + 1
+            );
+        }
+    }
+    .to_string()
 }
 
 fn check_cooldown_and_confirm(quick: bool) -> anyhow::Result<bool> {
@@ -147,7 +181,7 @@ fn confirm_force_run(remaining_secs: u64) -> anyhow::Result<bool> {
     }
 }
 
-async fn run_full_test(
+async fn run_configured_test(
     settings: &MenuSettings,
     config: &AppConfig,
     client: &Client,
@@ -183,7 +217,9 @@ async fn run_quick_test(
     }
 
     clear_screen();
-    println!("Running Quick Speed Test...\n");
+    println!("Running One-Off Quick Speed Test...");
+    println!("Warm-up is skipped, so this is a fast estimate.");
+    println!("Each successful Quick test counts toward the five-run Quick Burst limit.\n");
 
     let mut run_args = RunArgs::from(settings);
     run_args.quick = true;
@@ -243,7 +279,11 @@ fn show_settings(settings: &mut MenuSettings, _config: &AppConfig) -> anyhow::Re
             ),
             format!(
                 "Default Test Mode    : {}",
-                if settings.quick { "Quick" } else { "Integrity" }
+                if settings.quick {
+                    "Quick (fast estimate)"
+                } else {
+                    "Integrity"
+                }
             ),
             "<- Back to Main Menu".to_string(),
         ];
@@ -292,7 +332,10 @@ fn show_settings(settings: &mut MenuSettings, _config: &AppConfig) -> anyhow::Re
             Some(4) => {
                 let idx = Select::with_theme(&ColorfulTheme::default())
                     .with_prompt("Default Test Mode")
-                    .items(&["Integrity (Standard)", "Quick (Warm-up bypassed)"])
+                    .items(&[
+                        "Integrity (standard measurement)",
+                        "Quick (faster estimate; warm-up bypassed)",
+                    ])
                     .default(if settings.quick { 1 } else { 0 })
                     .interact()?;
                 settings.quick = idx == 1;
@@ -304,9 +347,35 @@ fn show_settings(settings: &mut MenuSettings, _config: &AppConfig) -> anyhow::Re
     Ok(())
 }
 
+fn use_compact_panels(term_width: usize) -> bool {
+    term_width < 64
+}
+
+fn panel_width(term_width: usize) -> usize {
+    term_width.saturating_sub(4).clamp(58, 72)
+}
+
 fn show_commands(_config: &AppConfig) {
     clear_screen();
-    let w = 58;
+    let term_width = console::Term::stdout().size().1 as usize;
+    if use_compact_panels(term_width) {
+        println!("  Commands\n");
+        println!("  --duration <SECS>     Test duration (default: 10)");
+        println!("  --connections <N>     Parallel connections");
+        println!("  --server <URL>        Custom Provider base URL");
+        println!("  --no-download         Skip download");
+        println!("  --no-upload           Skip upload");
+        println!("  --ping-count <N>      Ping probes (default: 20)");
+        println!("  --quick               Fast estimate; skips warm-up");
+        println!("  --force-run           Ignore local Cooldown");
+        println!("  --json                JSON output");
+        println!("  --self-update         Install latest release");
+        println!("\n  Press Enter to return...");
+        wait_for_enter();
+        return;
+    }
+
+    let w = panel_width(term_width);
     let inner_w = w - 2;
     println!("  ┌{}┐", "─".repeat(w));
     println!("  │ {} │", pad_to("Available Commands", inner_w));
@@ -359,6 +428,24 @@ fn show_commands(_config: &AppConfig) {
         "  │ {} │",
         pad_to("    --debug                 Enable debug logging", inner_w)
     );
+    println!(
+        "  │ {} │",
+        pad_to(
+            "    --quick                 Fast estimate; skips warm-up",
+            inner_w
+        )
+    );
+    println!(
+        "  │ {} │",
+        pad_to("    --force-run             Ignore local Cooldown", inner_w)
+    );
+    println!(
+        "  │ {} │",
+        pad_to(
+            "    --self-update           Install latest release",
+            inner_w
+        )
+    );
     println!("  ├{}┤", "─".repeat(w));
     println!(
         "  │ {} │",
@@ -386,7 +473,20 @@ fn show_help(config: &AppConfig) {
         color: config.color,
     };
 
-    let w = 58;
+    let term_width = console::Term::stdout().size().1 as usize;
+    if use_compact_panels(term_width) {
+        println!("  Results Guide\n");
+        println!("  Speed: >=500 Mbps excellent; 100-499 great; 25-99 good");
+        println!("         5-24 fair; below 5 may struggle with modern web");
+        println!("  Ping:  <=20 ms excellent; 21-80 ms good; >80 ms high");
+        println!("  Jitter: <=5 ms stable; 6-20 ms moderate; >20 ms unstable");
+        println!("  Packet loss: 0% ideal; any loss merits investigation");
+        println!("\n  Press Enter to return...");
+        wait_for_enter();
+        return;
+    }
+
+    let w = panel_width(term_width);
     let inner_w = w - 2;
     println!("  ┌{}┐", "─".repeat(w));
     println!("  │ {} │", pad_to("Interpreting Your Results", inner_w));
@@ -543,7 +643,7 @@ mod tests {
 
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
-    async fn test_run_full_test_prompts_on_active_cooldown() {
+    async fn test_run_configured_test_prompts_on_active_cooldown() {
         let _guard = crate::cooldown::TEST_ENV_LOCK.lock().unwrap();
 
         let temp = tempfile::TempDir::new().unwrap();
@@ -562,7 +662,7 @@ mod tests {
         let client = reqwest::Client::new();
 
         // Tests safely decline the force-run confirmation without reading stdin.
-        let res = run_full_test(&settings, &config, &client).await;
+        let res = run_configured_test(&settings, &config, &client).await;
         assert!(
             res.is_ok(),
             "Should return cleanly when force-run confirmation is declined, got: {:?}",
@@ -572,5 +672,23 @@ mod tests {
         unsafe {
             std::env::remove_var("SPEEDTEST_MOCK_DATA_DIR");
         }
+    }
+
+    #[test]
+    fn configured_quick_mode_is_visible_in_main_menu() {
+        let settings = MenuSettings {
+            quick: true,
+            ..Default::default()
+        };
+
+        assert!(configured_test_summary(&settings).starts_with("Quick (warm-up bypassed)"));
+    }
+
+    #[test]
+    fn compact_panels_are_used_on_narrow_terminals() {
+        assert!(use_compact_panels(63));
+        assert!(!use_compact_panels(64));
+        assert_eq!(panel_width(80), 72);
+        assert_eq!(panel_width(64), 60);
     }
 }

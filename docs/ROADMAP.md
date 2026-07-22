@@ -94,6 +94,9 @@ Ensure the tool is kept up-to-date in production using safe background/foregroun
       for instant results, as proposed in ADR 0003.
 - [ ] **TUI Feature Parity**: Add server selection and download/upload toggles
       to the interactive menu to match CLI flag capabilities.
+- [x] **TUI Run-State Clarity**: Show the active configuration and Cooldown on
+      the main menu, distinguish configured and one-off Quick tests, and use
+      compact information panels on narrow terminals.
 - [ ] **Multi-Server Selection**: Automatically find the closest server or allow
       a list of servers to be tested sequentially, with automatic fallback if
       the primary server is rate-limited or unreachable.

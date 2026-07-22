@@ -12,6 +12,21 @@ pub enum CooldownStatus {
     BlockedByBurstLimit { remaining_secs: u64 },
 }
 
+/// Returns the active Cooldown state without changing persisted state.
+pub fn current_cooldown_status(quick: bool) -> CooldownStatus {
+    if let Some(remaining_secs) = cooldown_remaining(DEFAULT_COOLDOWN_SECS) {
+        if quick && get_burst_count() >= 5 {
+            CooldownStatus::BlockedByBurstLimit { remaining_secs }
+        } else if quick {
+            CooldownStatus::Allowed
+        } else {
+            CooldownStatus::BlockedByCooldown { remaining_secs }
+        }
+    } else {
+        CooldownStatus::Allowed
+    }
+}
+
 /// Evaluates active timers, enforces burst thresholds, and updates the local state.
 pub fn enforce_cooldown_policy(quick: bool, force_run: bool) -> CooldownStatus {
     if force_run {
@@ -19,25 +34,11 @@ pub fn enforce_cooldown_policy(quick: bool, force_run: bool) -> CooldownStatus {
         return CooldownStatus::Allowed;
     }
 
-    if let Some(remaining) = cooldown_remaining(DEFAULT_COOLDOWN_SECS) {
-        if quick {
-            let burst_count = get_burst_count();
-            if burst_count >= 5 {
-                CooldownStatus::BlockedByBurstLimit {
-                    remaining_secs: remaining,
-                }
-            } else {
-                CooldownStatus::Allowed
-            }
-        } else {
-            CooldownStatus::BlockedByCooldown {
-                remaining_secs: remaining,
-            }
-        }
-    } else {
+    let status = current_cooldown_status(quick);
+    if cooldown_remaining(DEFAULT_COOLDOWN_SECS).is_none() {
         let _ = reset_burst_count();
-        CooldownStatus::Allowed
     }
+    status
 }
 
 /// Encapsulates the successful completion logging: updates the last run timestamp,
