@@ -1,18 +1,21 @@
 [package]
 name = "cli-speedtest"
-path = "src/main.rs"
 version = "0.1.4"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Tirso Benedict J. Naza <benedictnaza@gmail.com>"]
-description = "CLI based speedtest written on rust"
+description = "A provider-friendly CLI speed test written in Rust"
 repository = "https://github.com/nazakun021/cli-speedtest"
 license = "MIT OR Apache-2.0"
 keywords = ["cli", "network", "speedtest", "async"]
 categories = ["command-line-utilities", "network-programming"]
 
 [dependencies]
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json"] }
+reqwest = { version = "0.12", default-features = false, features = [
+    "rustls-tls",
+    "stream",
+    "json",
+] }
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 indicatif = "0.17"

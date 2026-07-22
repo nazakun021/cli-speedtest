@@ -3,6 +3,7 @@
 use clap::{CommandFactory, FromArgMatches, Parser};
 use rand::Rng;
 use reqwest::Client;
+use serde::Serialize;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::debug;
@@ -13,6 +14,11 @@ const CONNECT_TIMEOUT_SECS: u64 = 10;
 const REQUEST_TIMEOUT_SECS: u64 = 30;
 const GLOBAL_TEST_TIMEOUT_SECS: u64 = 120; // 2 minutes hard maximum
 const DEFAULT_PROVIDER_URL: &str = "https://speed.cloudflare.com";
+
+#[derive(Serialize)]
+struct ErrorOutput<'a> {
+    error: &'a str,
+}
 
 /// A blazing fast CLI Speedtest written in Rust
 #[derive(Parser, Debug, Clone)]
@@ -78,7 +84,7 @@ async fn main() -> anyhow::Result<()> {
 
     let has_flags = matches.ids().any(|id| {
         let name = id.as_str();
-        if name == "debug" || name == "no_color" || name == "force_run" {
+        if name == "debug" || name == "no_color" {
             return false;
         }
         matches.value_source(name) == Some(clap::parser::ValueSource::CommandLine)
@@ -175,10 +181,16 @@ async fn main() -> anyhow::Result<()> {
                     }
                     Err(e) => {
                         if args.json {
-                            println!(r#"{{"error": "{}"}}"#, e);
+                            println!(
+                                "{}",
+                                serde_json::to_string(&ErrorOutput {
+                                    error: &e.to_string()
+                                })?
+                            );
                         } else {
                             eprintln!("Error: {}", e);
                         }
+                        std::process::exit(1);
                     }
                 }
             }

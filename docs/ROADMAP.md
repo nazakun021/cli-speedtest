@@ -56,18 +56,18 @@ resolved and verified via integration tests.
 
 These issues were discovered in real-world multi-user testing. All items are now successfully implemented.
 
-| Item   | Description                                 | Status   |
-| ------ | ------------------------------------------- | -------- |
-| P2.6-1 | Treat 429 and 403 as fatal, not retryable   | ✅ Fixed |
-| P2.6-2 | Respect `Retry-After` header                | ✅ Fixed |
-| P2.6-3 | Reduce default connection counts            | ✅ Fixed |
-| P2.6-4 | Auto-reduce connections on first 429        | ✅ Fixed |
-| P2.6-5 | Request pacing with random jitter           | ✅ Added |
-| P2.6-6 | User-Agent rotation                         | ✅ Added |
-| P2.6-7 | Local cooldown enforcement (disk-persisted) | ✅ Added |
-| P2.6-8 | Global test timeout as a safety net         | ✅ Fixed |
-| P2.6-9 | Consistent error message with `--server`    | ✅ Fixed |
-| P2.6-10| Abort on slow connection (Progress timeout) | ✅ Fixed |
+| Item    | Description                                 | Status   |
+| ------- | ------------------------------------------- | -------- |
+| P2.6-1  | Treat 429 and 403 as fatal, not retryable   | ✅ Fixed |
+| P2.6-2  | Respect `Retry-After` header                | ✅ Fixed |
+| P2.6-3  | Reduce default connection counts            | ✅ Fixed |
+| P2.6-4  | Auto-reduce connections on first 429        | ✅ Fixed |
+| P2.6-5  | Request pacing with random jitter           | ✅ Added |
+| P2.6-6  | User-Agent rotation                         | ✅ Added |
+| P2.6-7  | Local cooldown enforcement (disk-persisted) | ✅ Added |
+| P2.6-8  | Global test timeout as a safety net         | ✅ Fixed |
+| P2.6-9  | Consistent error message with `--server`    | ✅ Fixed |
+| P2.6-10 | Abort on slow connection (Progress timeout) | ✅ Fixed |
 
 ---
 
@@ -105,9 +105,9 @@ Ensure the tool is kept up-to-date in production using safe background/foregroun
       alongside min/avg/max (e.g. using `textplots`).
 - [ ] **ISP / Location Metadata**: Query an IP-API to display local ISP and city
       in the summary header.
-- [ ] **Better Error Reporting for Custom Servers**: Detect when a `--server` URL
-      doesn't expose `/__down`, `/__up`, or `/cdn-cgi/trace` and surface a clear,
-      actionable error message instead of a generic HTTP failure.
+- [x] **Better Error Reporting for Custom Servers**: Preflight the selected
+      `/__down`, `/__up`, and `/cdn-cgi/trace` endpoints and surface a clear,
+      actionable error before a measurement begins.
 
 ---
 
@@ -119,14 +119,18 @@ Ensure the tool is kept up-to-date in production using safe background/foregroun
       Windows (amd64), macOS (Intel + ARM64) on version tags.
 - [x] **README Update**: Document all CLI flags, installation methods
       (`cargo install` + direct binary download), and show example output.
-- [ ] **Rendering Isolation Refactor**: Move UI updates to a dedicated task
-      using message passing (mpsc) to ensure measurement loops are zero-skew.
-- [ ] **Consistent Documentation**: Fix contradictions between CLI help text
-      and actual default connection counts (ADR 0001 alignment).
+- [x] **Rendering Isolation Refactor**: Route UI progress through a dedicated
+      display task using message passing (mpsc), keeping terminal rendering out
+      of measurement workers.
+- [x] **Consistent Documentation**: Align CLI help and public documentation
+      with Direct Mode's 4-download/2-upload defaults and Interactive Mode's
+      shared connection setting.
 - [ ] **Rustdoc**: Add doc-comments to all public functions. Enable
       `#![warn(missing_docs)]` in `lib.rs`.
 - [x] **Unit Test Expansion**: Add tests covering the rate-limit short-circuit
       behaviour from P2.6-1 and the cooldown logic from P2.6-7.
+- [x] **Interactive Menu Testability**: Inject main-menu selections so startup
+      and Self-Update flows can run in non-interactive tests.
 - [ ] **Refine Error Handling**: Implement custom error types using `thiserror`
       for better programmatic error handling downstream.
 - [ ] **WASM Support**: Explore compiling the core library to WASM for a

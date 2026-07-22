@@ -13,12 +13,12 @@ We decided to implement the **Self-Update** mechanism with the following design:
 1. **Trigger & Cache**: Checks are run on interactive menu (TUI) startup. The check timestamp is saved to `~/.local/share/speedtest/last_update_check`. A check is only performed if at least 24 hours have elapsed since the last check. No update check runs automatically during Direct Mode runs.
 2. **Channel**: Release assets are queried directly from the GitHub Releases API (`https://api.github.com/repos/nazakun021/cli-speedtest/releases/latest`) using `reqwest`.
 3. **Asset Mapping & Execution**:
-   * Current OS and CPU architecture are matched at compile time to the corresponding raw binary asset on GitHub (`speedtest-macos-arm64`, `speedtest-macos-intel`, `speedtest-linux-amd64`, or `speedtest-windows-amd64.exe`).
-   * The binary is downloaded directly and replaced using the `self-replace` crate.
+   - The current OS and CPU architecture are matched to the corresponding raw binary asset on GitHub (`speedtest-macos-arm64`, `speedtest-macos-intel`, `speedtest-linux-amd64`, or `speedtest-windows-amd64.exe`). The mapping is covered for every supported release target.
+   - The binary is downloaded directly and replaced using the `self-replace` crate.
 4. **Overrides & Opt-outs**:
-   * Users can manually force an update immediately using the `--self-update` CLI option.
-   * Auto-update checking is completely bypassed in non-interactive/Direct Mode runs by default, and can be bypassed in Interactive Mode if the `NO_UPDATE` or `CLI_SPEEDTEST_NO_UPDATE` environment variable is set.
-   * Permission errors (e.g. read-only system installation paths) are caught gracefully using a robust anyhow error-chain downcast check and logged to `stderr`.
+   - Users can manually force an update immediately using the `--self-update` CLI option.
+   - Auto-update checking is completely bypassed in non-interactive/Direct Mode runs by default, and can be bypassed in Interactive Mode if the `NO_UPDATE` or `CLI_SPEEDTEST_NO_UPDATE` environment variable is set.
+   - Permission errors (e.g. read-only system installation paths) are caught gracefully using a robust anyhow error-chain downcast check and logged to `stderr`.
 5. **UX**: In Interactive Mode, when an update is detected, the user is prompted for confirmation via `dialoguer` before the update is applied. Manual updates run via `--self-update` display an active progress bar via `indicatif`.
 
 ## Consequences

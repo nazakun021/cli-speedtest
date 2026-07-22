@@ -17,7 +17,7 @@ A production-grade, resilient CLI speedtest tool written in Rust. Designed for m
 - **Comprehensive Metrics**:
   - **Latency**: Min, Max, Average, Jitter, and Packet Loss.
   - **Throughput**: Real-time Mbps for both Download and Upload.
-- **Automatic Self-Updates**: Periodically checks for updates at startup (in interactive mode), prompts for confirmation, verifies signatures (SHA-256), and performs safe atomic updates.
+- **Self-Update**: Checks for updates on interactive startup at most once every 24 hours, prompts for confirmation, verifies the downloaded binary with SHA-256, and performs an in-place replacement.
 - **Visual Polish**: Semantic color-coding (Mbps/Ping thresholds) and live rolling-speed displays.
 - **Machine-Readable**: Use the `--json` flag for clean, parseable output perfect for cron jobs and monitoring.
 
@@ -97,22 +97,22 @@ cli-speedtest
 
 ### Direct Mode (Machine Interface)
 
-Pass any configuration flag to bypass the menu and run directly. Optimized for scripting and automation:
+Pass a measurement or execution flag to bypass the menu and run directly. Direct Mode is optimized for scripting and automation:
 
-| Flag                    | Description                                      | Default            |
-| ----------------------- | ------------------------------------------------ | ------------------ |
-| `-d, --duration <SECS>` | Length of the test in seconds                    | `10`               |
-| `-c, --connections <N>` | Number of parallel connections                   | `4` (DL), `2` (UL) |
-| `--server <URL>`        | Custom target server URL (Cloudflare-Optimized)  | Cloudflare         |
-| `--ping-count <N>`      | Number of pings to send                          | `20`               |
-| `--no-download`         | Skip the download test                           | -                  |
-| `--no-upload`           | Skip the upload test                             | -                  |
-| `--json`                | Output results in JSON format                    | -                  |
-| `--no-color`            | Disable terminal styling                         | -                  |
-| `--debug`               | Enable verbose logging                           | -                  |
-| `--force-run`           | Bypass the local cooldown and run immediately    | -                  |
-| `--quick`               | Bypass warm-up and cooldown (Quick Mode)         | -                  |
-| `--self-update`         | Check for updates and install latest immediately | -                  |
+| Flag                    | Description                                                  | Default            |
+| ----------------------- | ------------------------------------------------------------ | ------------------ |
+| `-d, --duration <SECS>` | Length of the test in seconds                                | `10`               |
+| `-c, --connections <N>` | Number of parallel connections                               | `4` (DL), `2` (UL) |
+| `--server <URL>`        | Custom Provider base URL; selected endpoints are preflighted | Cloudflare         |
+| `--ping-count <N>`      | Number of pings to send                                      | `20`               |
+| `--no-download`         | Skip the download test                                       | -                  |
+| `--no-upload`           | Skip the upload test                                         | -                  |
+| `--json`                | Output results in JSON format                                | -                  |
+| `--no-color`            | Disable terminal styling                                     | -                  |
+| `--debug`               | Enable verbose logging                                       | -                  |
+| `--force-run`           | Bypass the local cooldown and run immediately                | -                  |
+| `--quick`               | Bypass warm-up and cooldown (Quick Mode)                     | -                  |
+| `--self-update`         | Check for updates and install latest immediately             | -                  |
 
 ### Environment Variables
 
@@ -143,7 +143,7 @@ When running with `--json`, the tool returns a structured object. Note that late
 ```json
 {
   "timestamp": "2026-04-05T12:00:00Z",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "server_name": "Cloudflare",
   "ping": {
     "min_ms": 10,
@@ -179,6 +179,10 @@ cargo test
 # Run tests with logging enabled
 RUST_LOG=debug cargo test
 ```
+
+## Documentation
+
+Start with [docs/README.md](docs/README.md) for the documentation map. Operational behavior, local state, automation guarantees, and measurement limits are in [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 ## Project Structure
 

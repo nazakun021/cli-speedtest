@@ -43,8 +43,8 @@ where
             Ok(val) => return Ok(val),
             Err(e) => {
                 // If the closure wrapped the error as NonRetryable, bail instantly
-                if let Some(nre) = e.downcast_ref::<NonRetryableError>() {
-                    return Err(anyhow::anyhow!("{}", nre.0));
+                if e.downcast_ref::<NonRetryableError>().is_some() {
+                    return Err(e);
                 }
                 if attempt < max_retries {
                     let backoff = Duration::from_millis(100 * 2u64.pow(attempt));

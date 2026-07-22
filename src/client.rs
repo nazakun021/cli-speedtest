@@ -9,7 +9,8 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-use tokio::sync::Barrier;
+use tokio::sync::{Barrier, mpsc};
+use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
 use crate::models::{AppConfig, PingStats};
@@ -76,7 +77,9 @@ pub async fn test_ping_stats(
     for _ in 0..count {
         let start = Instant::now();
         match tokio::time::timeout(Duration::from_secs(2), client.head(&url).send()).await {
-            Ok(Ok(_)) => samples.push(start.elapsed().as_millis()),
+            Ok(Ok(response)) if response.status().is_success() => {
+                samples.push(start.elapsed().as_millis())
+            }
             _ => lost += 1,
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -142,19 +145,20 @@ pub async fn test_download(
     let token = CancellationToken::new();
     let barrier = Arc::new(Barrier::new(num_connections + 1)); // +1 for the display task
     let shared_start: Arc<OnceLock<Instant>> = Arc::new(OnceLock::new());
-    let mut tasks = vec![];
+    let mut tasks = JoinSet::new();
+    let (progress_tx, mut progress_rx) = mpsc::unbounded_channel();
 
     // Worker tasks
     for _ in 0..num_connections {
         let client = client.clone();
-        let pb = pb.clone();
         let total_downloaded = total_downloaded.clone();
         let url = format!("{}/__down?bytes={}", base_url, chunk_size_bytes);
         let barrier = barrier.clone();
         let shared_start = shared_start.clone();
         let token = token.clone();
+        let progress_tx = progress_tx.clone();
 
-        let task = tokio::spawn(async move {
+        tasks.spawn(async move {
             barrier.wait().await;
             let start = *shared_start.get_or_init(Instant::now);
 
@@ -184,7 +188,7 @@ pub async fn test_download(
                             match item {
                                 Some(Ok(chunk)) => {
                                     let len = chunk.len() as u64;
-                                    pb.inc(len);
+                                    let _ = progress_tx.send(len);
                                     if start.elapsed().as_secs_f64() >= warmup_secs {
                                         total_downloaded.fetch_add(len, Ordering::Relaxed);
                                     }
@@ -202,9 +206,8 @@ pub async fn test_download(
 
             Ok::<(), anyhow::Error>(())
         });
-
-        tasks.push(task);
     }
+    drop(progress_tx);
 
     // Display task
     let display_task = {
@@ -220,10 +223,17 @@ pub async fn test_download(
             let mut prev_bytes = 0;
             let mut prev_instant = Instant::now();
             let mut low_speed_since: Option<Instant> = None;
+            let mut progress_channel_open = true;
 
             loop {
                 tokio::select! {
                     _ = token.cancelled() => break Ok(()),
+                    progress = progress_rx.recv(), if progress_channel_open => {
+                        match progress {
+                            Some(bytes) => pb.inc(bytes),
+                            None => progress_channel_open = false,
+                        }
+                    }
                     _ = tokio::time::sleep(Duration::from_millis(250)) => {
                         let now_bytes = total_downloaded.load(Ordering::Relaxed);
                         let delta = now_bytes.saturating_sub(prev_bytes);
@@ -270,22 +280,30 @@ pub async fn test_download(
     };
 
     let mut display_handle = display_task;
-    tokio::select! {
-        _ = tokio::time::sleep(Duration::from_secs(duration_secs)) => {
-            token.cancel();
-        }
-        res = &mut display_handle => {
-            token.cancel();
-            // If the display task finished (likely due to error), propagate it
-            if let Ok(Err(e)) = res {
-                return Err(e);
-            }
-        }
+    let measurement_result = tokio::select! {
+        _ = tokio::time::sleep(Duration::from_secs(duration_secs)) => Ok(()),
+        task_result = tasks.join_next() => match task_result {
+            Some(Ok(Err(error))) => Err(error),
+            Some(Ok(Ok(()))) => Err(anyhow::anyhow!("Download worker ended before the test completed")),
+            Some(Err(error)) => Err(error.into()),
+            None => Err(anyhow::anyhow!("No download workers were started")),
+        },
+        display_result = &mut display_handle => match display_result {
+            Ok(Err(error)) => Err(error),
+            Ok(Ok(())) => Err(anyhow::anyhow!("Download display ended before the test completed")),
+            Err(error) => Err(error.into()),
+        },
+    };
+
+    token.cancel();
+    tasks.shutdown().await;
+
+    if let Err(error) = measurement_result {
+        display_handle.abort();
+        pb.finish_and_clear();
+        return Err(error);
     }
 
-    for task in tasks {
-        task.await??;
-    }
     display_handle.await??;
 
     pb.finish_and_clear();
@@ -318,19 +336,20 @@ pub async fn test_upload(
     let token = CancellationToken::new();
     let barrier = Arc::new(Barrier::new(num_connections + 1));
     let shared_start: Arc<OnceLock<Instant>> = Arc::new(OnceLock::new());
-    let mut tasks = vec![];
+    let mut tasks = JoinSet::new();
+    let (progress_tx, mut progress_rx) = mpsc::unbounded_channel();
 
     // Worker tasks
     for _ in 0..num_connections {
         let client = client.clone();
-        let pb = pb.clone();
         let total_uploaded = total_uploaded.clone();
         let url = format!("{}/__up", base_url);
         let barrier = barrier.clone();
         let shared_start = shared_start.clone();
         let token = token.clone();
+        let progress_tx = progress_tx.clone();
 
-        let task = tokio::spawn(async move {
+        tasks.spawn(async move {
             barrier.wait().await;
             let start = *shared_start.get_or_init(Instant::now);
 
@@ -356,7 +375,7 @@ pub async fn test_upload(
                 {
                     Ok(_) => {
                         let len = payload.len() as u64;
-                        pb.inc(len);
+                        let _ = progress_tx.send(len);
                         if start.elapsed().as_secs_f64() >= warmup_secs {
                             total_uploaded.fetch_add(len, Ordering::Relaxed);
                         }
@@ -370,9 +389,8 @@ pub async fn test_upload(
 
             Ok::<(), anyhow::Error>(())
         });
-
-        tasks.push(task);
     }
+    drop(progress_tx);
 
     // Display task
     let display_task = {
@@ -388,10 +406,17 @@ pub async fn test_upload(
             let mut prev_bytes = 0;
             let mut prev_instant = Instant::now();
             let mut low_speed_since: Option<Instant> = None;
+            let mut progress_channel_open = true;
 
             loop {
                 tokio::select! {
                     _ = token.cancelled() => break Ok(()),
+                    progress = progress_rx.recv(), if progress_channel_open => {
+                        match progress {
+                            Some(bytes) => pb.inc(bytes),
+                            None => progress_channel_open = false,
+                        }
+                    }
                     _ = tokio::time::sleep(Duration::from_millis(250)) => {
                         let now_bytes = total_uploaded.load(Ordering::Relaxed);
                         let delta = now_bytes.saturating_sub(prev_bytes);
@@ -438,21 +463,30 @@ pub async fn test_upload(
     };
 
     let mut display_handle = display_task;
-    tokio::select! {
-        _ = tokio::time::sleep(Duration::from_secs(duration_secs)) => {
-            token.cancel();
-        }
-        res = &mut display_handle => {
-            token.cancel();
-            if let Ok(Err(e)) = res {
-                return Err(e);
-            }
-        }
+    let measurement_result = tokio::select! {
+        _ = tokio::time::sleep(Duration::from_secs(duration_secs)) => Ok(()),
+        task_result = tasks.join_next() => match task_result {
+            Some(Ok(Err(error))) => Err(error),
+            Some(Ok(Ok(()))) => Err(anyhow::anyhow!("Upload worker ended before the test completed")),
+            Some(Err(error)) => Err(error.into()),
+            None => Err(anyhow::anyhow!("No upload workers were started")),
+        },
+        display_result = &mut display_handle => match display_result {
+            Ok(Err(error)) => Err(error),
+            Ok(Ok(())) => Err(anyhow::anyhow!("Upload display ended before the test completed")),
+            Err(error) => Err(error.into()),
+        },
+    };
+
+    token.cancel();
+    tasks.shutdown().await;
+
+    if let Err(error) = measurement_result {
+        display_handle.abort();
+        pb.finish_and_clear();
+        return Err(error);
     }
 
-    for task in tasks {
-        task.await??;
-    }
     display_handle.await??;
 
     pb.finish_and_clear();

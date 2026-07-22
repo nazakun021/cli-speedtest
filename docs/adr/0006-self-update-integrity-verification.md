@@ -9,8 +9,9 @@ The **Self-Update** mechanism downloads pre-built binaries from GitHub Releases.
 ## Decision
 
 We decided to implement SHA-256 Checksum Validation:
-1. **Release Asset**: The release pipeline generates a `SHA256SUMS` manifest file containing the SHA-256 hash of each build artifact and uploads it to the release.
-2. **Download**: During update, the tool first downloads the `SHA256SUMS` file, parses it to extract the expected hash for the current target platform's asset, and then downloads the binary.
+
+1. **Release Asset**: The release pipeline generates one adjacent `<asset>.sha256` file for each build artifact and uploads both files to the release.
+2. **Download**: During update, the tool first downloads the selected asset's adjacent `.sha256` file and then downloads the binary.
 3. **Validation**: The tool calculates the SHA-256 hash of the downloaded binary. If the computed hash does not match the expected hash, the update is aborted, and the temporary file is removed.
 4. **Crate**: We will use the `sha2` crate (via standard SHA-256 algorithm) to compute the hash.
 5. **Threat Model Boundary**: We explicitly accept the risk of release pipeline compromise. The checksum and binary are hosted on the same GitHub Releases trust path. This mechanism is designed to prevent transit corruption and CDN tampering/MITM, not supply-chain attacks via compromised build credentials or repository hijacking.

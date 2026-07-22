@@ -16,6 +16,7 @@ use cli_speedtest::{
 };
 use mockito::Matcher;
 use reqwest::Client;
+use serde_json::json;
 use std::sync::Arc;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -49,6 +50,28 @@ fn calculate_mbps_known_value() {
 #[test]
 fn calculate_mbps_zero_duration_returns_zero() {
     assert_eq!(calculate_mbps(999_999, 0.0), 0.0);
+}
+
+#[test]
+fn json_error_output_escapes_special_characters() {
+    let error = "provider returned \"bad request\"\ntry again";
+    let output = serde_json::to_string(&json!({ "error": error })).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
+
+    assert_eq!(parsed["error"], error);
+}
+
+#[test]
+fn direct_mode_json_errors_are_valid_and_nonzero() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cli-speedtest"))
+        .args(["--duration", "2", "--json"])
+        .output()
+        .expect("CLI should launch");
+
+    assert_eq!(output.status.code(), Some(1));
+    let result: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("error output must be valid JSON");
+    assert!(result["error"].as_str().unwrap().contains("warm-up"));
 }
 
 // ── test_ping_stats ───────────────────────────────────────────────────────────
@@ -96,6 +119,28 @@ async fn ping_stats_single_probe_has_zero_jitter() {
         "jitter is undefined with one sample — must be 0"
     );
     assert_eq!(stats.min_ms, stats.max_ms, "min == max with one sample");
+}
+
+#[tokio::test]
+async fn ping_stats_rejects_non_successful_responses() {
+    let mut server = mockito::Server::new_async().await;
+    let _mock = server
+        .mock("HEAD", "/cdn-cgi/trace")
+        .with_status(503)
+        .expect_at_least(1)
+        .create_async()
+        .await;
+
+    let result = test_ping_stats(&test_client(), &server.url(), 1, quiet_config()).await;
+
+    assert!(result.is_err());
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("All ping attempts failed")
+    );
+    _mock.assert_async().await;
 }
 
 // ── test_download ─────────────────────────────────────────────────────────────
@@ -350,6 +395,36 @@ async fn custom_provider_url_is_used_and_reflected_in_result() {
     );
 }
 
+#[tokio::test]
+async fn custom_provider_rejects_missing_selected_endpoint() {
+    let mut server = mockito::Server::new_async().await;
+
+    let _ping = server
+        .mock("HEAD", "/cdn-cgi/trace")
+        .with_status(200)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let result = cli_speedtest::run(
+        RunArgs {
+            provider_url: server.url(),
+            duration_secs: TEST_DURATION_SECS,
+            connections: Some(1),
+            ping_count: 1,
+            no_download: false,
+            no_upload: true,
+            quick: false,
+        },
+        quiet_config(),
+        test_client(),
+    )
+    .await;
+
+    let error = result.expect_err("missing download endpoint must fail preflight");
+    assert!(error.to_string().contains("GET /__down"));
+}
+
 // ── Validation edge cases ─────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -414,6 +489,7 @@ async fn download_bails_immediately_on_429() {
         .create_async()
         .await;
 
+    let start = std::time::Instant::now();
     let result = test_download(
         &test_client(),
         &server.url(),
@@ -426,6 +502,7 @@ async fn download_bails_immediately_on_429() {
 
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("rate-limited"));
+    assert!(start.elapsed() < std::time::Duration::from_secs(1));
     _mock.assert_async().await;
 }
 
@@ -492,6 +569,7 @@ async fn upload_bails_immediately_on_429() {
         .create_async()
         .await;
 
+    let start = std::time::Instant::now();
     let result = test_upload(
         &test_client(),
         &server.url(),
@@ -504,6 +582,7 @@ async fn upload_bails_immediately_on_429() {
 
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("rate-limited"));
+    assert!(start.elapsed() < std::time::Duration::from_secs(1));
     _mock.assert_async().await;
 }
 
@@ -1491,7 +1570,7 @@ async fn check_and_perform_auto_update_gracefully_handles_permission_denied() {
 
 #[tokio::test]
 async fn test_tui_menu_triggers_updater_on_startup() {
-    use cli_speedtest::menu::run_menu;
+    use cli_speedtest::menu::run_menu_with_selector;
     use cli_speedtest::models::AppConfig;
     use std::fs;
     use std::sync::Arc;
@@ -1566,9 +1645,8 @@ async fn test_tui_menu_triggers_updater_on_startup() {
         color: false,
     });
 
-    let res = run_menu(config, client).await;
-    // dialoguer fails in non-TTY test environments, which is expected
-    assert!(res.is_err());
+    let res = run_menu_with_selector(config, client, || Ok(Some(6))).await;
+    assert!(res.is_ok(), "Menu should exit after the injected selection");
 
     // Verify mock binary content has changed
     let current_content = fs::read_to_string(&mock_exe_path).unwrap();

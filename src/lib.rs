@@ -16,6 +16,58 @@ use utils::{NonRetryableError, WARMUP_SECS};
 
 const DEFAULT_PROVIDER_URL: &str = "https://speed.cloudflare.com";
 
+async fn validate_custom_provider(
+    client: &Client,
+    base_url: &str,
+    check_download: bool,
+    check_upload: bool,
+) -> anyhow::Result<()> {
+    async fn validate_response(response: reqwest::Response, endpoint: &str) -> anyhow::Result<()> {
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            anyhow::bail!(
+                "Custom provider is incompatible: {} returned {}. \
+                 Verify the URL exposes the required speedtest endpoints.",
+                endpoint,
+                response.status()
+            );
+        }
+    }
+
+    let trace_url = format!("{}/cdn-cgi/trace", base_url);
+    let response = client.head(&trace_url).send().await.map_err(|error| {
+        anyhow::anyhow!(
+            "Custom provider is unreachable at HEAD /cdn-cgi/trace: {}",
+            error
+        )
+    })?;
+    validate_response(response, "HEAD /cdn-cgi/trace").await?;
+
+    if check_download {
+        let download_url = format!("{}/__down?bytes=1", base_url);
+        let response = client.get(&download_url).send().await.map_err(|error| {
+            anyhow::anyhow!("Custom provider is unreachable at GET /__down: {}", error)
+        })?;
+        validate_response(response, "GET /__down").await?;
+    }
+
+    if check_upload {
+        let upload_url = format!("{}/__up", base_url);
+        let response = client
+            .post(&upload_url)
+            .body(vec![0_u8])
+            .send()
+            .await
+            .map_err(|error| {
+                anyhow::anyhow!("Custom provider is unreachable at POST /__up: {}", error)
+            })?;
+        validate_response(response, "POST /__up").await?;
+    }
+
+    Ok(())
+}
+
 async fn run_with_fallback_concurrency<F, Fut>(
     initial_conns: usize,
     config: Arc<AppConfig>,
@@ -81,6 +133,16 @@ pub async fn run(
         },
         base_url: args.provider_url.clone(),
     };
+
+    if provider.base_url != DEFAULT_PROVIDER_URL {
+        validate_custom_provider(
+            &client,
+            &provider.base_url,
+            !args.no_download,
+            !args.no_upload,
+        )
+        .await?;
+    }
 
     if !config.quiet {
         println!("Using provider: {}\n", provider.name);

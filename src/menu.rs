@@ -18,9 +18,24 @@ const ASCII_ART: &str = r#"
  ╚═════╝╚══════╝╚═╝    ╚══════╝╚═╝     ╚══════╝╚══════╝╚═════╝    ╚═╝   ╚══════╝╚══════╝   ╚═╝
 "#;
 
-const ASCII_ART_COMPACT: &str = "  CLI SPEEDTEST  -  v0.1.0";
+const ASCII_ART_COMPACT: &str = "  CLI SPEEDTEST";
 
 pub async fn run_menu(config: Arc<AppConfig>, client: Client) -> anyhow::Result<()> {
+    run_menu_with_selector(config, client, select_main_menu).await
+}
+
+/// Runs the interactive menu with a caller-supplied main-menu selector.
+///
+/// The production entry point uses `dialoguer`; tests can supply deterministic
+/// selections without requiring a TTY.
+pub async fn run_menu_with_selector<F>(
+    config: Arc<AppConfig>,
+    client: Client,
+    mut select_main_menu: F,
+) -> anyhow::Result<()>
+where
+    F: FnMut() -> anyhow::Result<Option<usize>>,
+{
     let mut settings = MenuSettings::default();
 
     // Check/prompt for updates on startup before entering TUI loop
@@ -28,22 +43,7 @@ pub async fn run_menu(config: Arc<AppConfig>, client: Client) -> anyhow::Result<
 
     loop {
         print_welcome(&config);
-
-        let options = &[
-            "Start Full Speed Test",
-            "Start Quick Speed Test",
-            "Quick Ping Only",
-            "Settings",
-            "View Commands",
-            "Help",
-            "Exit",
-        ];
-
-        let selection = Select::with_theme(&ColorfulTheme::default())
-            .with_prompt("Main Menu")
-            .items(options)
-            .default(0)
-            .interact_opt()?;
+        let selection = select_main_menu()?;
 
         match selection {
             Some(0) => run_full_test(&settings, &config, &client).await?,
@@ -63,6 +63,24 @@ pub async fn run_menu(config: Arc<AppConfig>, client: Client) -> anyhow::Result<
     Ok(())
 }
 
+fn select_main_menu() -> anyhow::Result<Option<usize>> {
+    let options = [
+        "Start Full Speed Test",
+        "Start Quick Speed Test",
+        "Quick Ping Only",
+        "Settings",
+        "View Commands",
+        "Help",
+        "Exit",
+    ];
+
+    Ok(Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Main Menu")
+        .items(&options)
+        .default(0)
+        .interact_opt()?)
+}
+
 fn print_welcome(_config: &AppConfig) {
     clear_screen();
     let term_width = console::Term::stdout().size().1 as usize;
@@ -70,7 +88,11 @@ fn print_welcome(_config: &AppConfig) {
     if term_width >= 95 {
         println!("{}", ASCII_ART);
     } else {
-        println!("\n{}\n", ASCII_ART_COMPACT);
+        println!(
+            "\n{}  -  v{}\n",
+            ASCII_ART_COMPACT,
+            env!("CARGO_PKG_VERSION")
+        );
     }
 
     println!("  A blazing fast network speed tester - written in Rust");
@@ -86,13 +108,7 @@ fn check_cooldown_and_confirm(quick: bool) -> anyhow::Result<bool> {
     match enforce_cooldown_policy(quick, false) {
         CooldownStatus::Allowed => Ok(true),
         CooldownStatus::BlockedByCooldown { remaining_secs } => {
-            let confirm = dialoguer::Confirm::with_theme(&ColorfulTheme::default())
-                .with_prompt(format!(
-                    "Cooldown is active ({}s remaining). Force run?",
-                    remaining_secs
-                ))
-                .default(false)
-                .interact()?;
+            let confirm = confirm_force_run(remaining_secs)?;
             if confirm {
                 let _ = enforce_cooldown_policy(quick, true);
                 Ok(true)
@@ -101,13 +117,7 @@ fn check_cooldown_and_confirm(quick: bool) -> anyhow::Result<bool> {
             }
         }
         CooldownStatus::BlockedByBurstLimit { remaining_secs } => {
-            let confirm = dialoguer::Confirm::with_theme(&ColorfulTheme::default())
-                .with_prompt(format!(
-                    "Quick Burst limit reached ({}s remaining). Force run?",
-                    remaining_secs
-                ))
-                .default(false)
-                .interact()?;
+            let confirm = confirm_force_run(remaining_secs)?;
             if confirm {
                 let _ = enforce_cooldown_policy(quick, true);
                 Ok(true)
@@ -115,6 +125,25 @@ fn check_cooldown_and_confirm(quick: bool) -> anyhow::Result<bool> {
                 Ok(false)
             }
         }
+    }
+}
+
+fn confirm_force_run(remaining_secs: u64) -> anyhow::Result<bool> {
+    #[cfg(test)]
+    {
+        let _ = remaining_secs;
+        Ok(false)
+    }
+
+    #[cfg(not(test))]
+    {
+        Ok(dialoguer::Confirm::with_theme(&ColorfulTheme::default())
+            .with_prompt(format!(
+                "Cooldown is active ({}s remaining). Force run?",
+                remaining_secs
+            ))
+            .default(false)
+            .interact()?)
     }
 }
 
@@ -136,6 +165,7 @@ async fn run_full_test(
     });
 
     crate::run(run_args, app_config, client.clone()).await?;
+    crate::cooldown::record_run_completion(settings.quick)?;
 
     println!("\n  Press Enter to return to menu...");
     wait_for_enter();
@@ -164,6 +194,7 @@ async fn run_quick_test(
     });
 
     crate::run(run_args, app_config, client.clone()).await?;
+    crate::cooldown::record_run_completion(true)?;
 
     println!("\n  Press Enter to return to menu...");
     wait_for_enter();
@@ -530,11 +561,11 @@ mod tests {
         };
         let client = reqwest::Client::new();
 
-        // Attempting to run should prompt user via dialoguer, which fails/errors in non-TTY test
+        // Tests safely decline the force-run confirmation without reading stdin.
         let res = run_full_test(&settings, &config, &client).await;
         assert!(
-            res.is_err(),
-            "Should return error due to TTY prompt block, got: {:?}",
+            res.is_ok(),
+            "Should return cleanly when force-run confirmation is declined, got: {:?}",
             res
         );
 

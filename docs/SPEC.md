@@ -2,9 +2,14 @@
 
 **Project:** `cli-speedtest`
 **Phase:** 2.6
-**Status:** Planning
+**Status:** Implemented and archived
 **Target releases:** v0.1.1, v0.1.2, v0.1.3
 **Depends on:** Phase 2.5 (all items ✅ complete)
+
+> This is the implementation-era planning record for Phase 2.6. The phase is
+> complete in v0.1.4; some examples below intentionally describe the proposed
+> design rather than the current source. For current behavior, use
+> [OPERATIONS.md](OPERATIONS.md), [MISSION.md](MISSION.md), and the tests.
 
 ---
 

@@ -20,6 +20,16 @@ struct GithubAsset {
     browser_download_url: String,
 }
 
+fn release_asset_name(os: &str, arch: &str) -> Option<&'static str> {
+    match (os, arch) {
+        ("linux", "x86_64") => Some("speedtest-linux-amd64"),
+        ("windows", "x86_64") => Some("speedtest-windows-amd64.exe"),
+        ("macos", "x86_64") => Some("speedtest-macos-intel"),
+        ("macos", "aarch64") => Some("speedtest-macos-arm64"),
+        _ => None,
+    }
+}
+
 pub async fn check_for_updates(client: &reqwest::Client) -> anyhow::Result<Option<UpdateInfo>> {
     let base_url = std::env::var("SPEEDTEST_MOCK_GITHUB_API")
         .unwrap_or_else(|_| "https://api.github.com".to_string());
@@ -48,17 +58,7 @@ pub async fn check_for_updates(client: &reqwest::Client) -> anyhow::Result<Optio
     let local_ver = semver::Version::parse(env!("CARGO_PKG_VERSION"))?;
 
     if remote_ver > local_ver {
-        let expected_asset_name = if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
-            Some("speedtest-linux-amd64")
-        } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
-            Some("speedtest-windows-amd64.exe")
-        } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
-            Some("speedtest-macos-intel")
-        } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-            Some("speedtest-macos-arm64")
-        } else {
-            None
-        };
+        let expected_asset_name = release_asset_name(std::env::consts::OS, std::env::consts::ARCH);
 
         if let Some(target_name) = expected_asset_name {
             if let Some(asset) = release.assets.into_iter().find(|a| a.name == target_name) {
@@ -286,6 +286,29 @@ pub async fn check_and_perform_auto_update(client: &reqwest::Client) -> anyhow::
 
 #[cfg(test)]
 mod tests {
+    use super::release_asset_name;
+
+    #[test]
+    fn release_asset_names_match_the_supported_targets() {
+        assert_eq!(
+            release_asset_name("linux", "x86_64"),
+            Some("speedtest-linux-amd64")
+        );
+        assert_eq!(
+            release_asset_name("windows", "x86_64"),
+            Some("speedtest-windows-amd64.exe")
+        );
+        assert_eq!(
+            release_asset_name("macos", "x86_64"),
+            Some("speedtest-macos-intel")
+        );
+        assert_eq!(
+            release_asset_name("macos", "aarch64"),
+            Some("speedtest-macos-arm64")
+        );
+        assert_eq!(release_asset_name("linux", "aarch64"), None);
+    }
+
     #[test]
     fn test_permission_denied_downcast_chain() {
         let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied");
