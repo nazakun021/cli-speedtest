@@ -76,7 +76,7 @@ pub async fn test_ping_stats(
 
     for _ in 0..count {
         let start = Instant::now();
-        match tokio::time::timeout(Duration::from_secs(2), client.head(&url).send()).await {
+        match tokio::time::timeout(Duration::from_secs(2), client.get(&url).send()).await {
             Ok(Ok(response)) if response.status().is_success() => {
                 samples.push(start.elapsed().as_millis())
             }

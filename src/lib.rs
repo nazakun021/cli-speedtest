@@ -36,13 +36,13 @@ async fn validate_custom_provider(
     }
 
     let trace_url = format!("{}/cdn-cgi/trace", base_url);
-    let response = client.head(&trace_url).send().await.map_err(|error| {
+    let response = client.get(&trace_url).send().await.map_err(|error| {
         anyhow::anyhow!(
-            "Custom provider is unreachable at HEAD /cdn-cgi/trace: {}",
+            "Custom provider is unreachable at GET /cdn-cgi/trace: {}",
             error
         )
     })?;
-    validate_response(response, "HEAD /cdn-cgi/trace").await?;
+    validate_response(response, "GET /cdn-cgi/trace").await?;
 
     if check_download {
         let download_url = format!("{}/__down?bytes=1", base_url);

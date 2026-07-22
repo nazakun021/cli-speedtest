@@ -42,7 +42,7 @@ The tool must provide parity between human and machine interfaces:
 
 ### Latency Sampling Window
 
-- **Method**: HEAD requests to `/cdn-cgi/trace` (or equivalent).
+- **Method**: GET requests to `/cdn-cgi/trace` (or equivalent).
 - **Sample Count**: Default 20 samples; Direct Mode accepts any count of at least one.
 - **Pacing**: 50ms interval between samples to avoid ICMP-style rate limiting.
 - **Metrics**: Min, Max, Average, Jitter (Average Deviation), and Packet Loss. Timeouts and non-success HTTP responses count as Packet Loss.

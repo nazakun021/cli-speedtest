@@ -145,7 +145,7 @@ When running with `--json`, the tool returns a structured object. Note that late
 ```json
 {
   "timestamp": "2026-04-05T12:00:00Z",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "server_name": "Cloudflare",
   "ping": {
     "min_ms": 10,
@@ -163,7 +163,7 @@ When running with `--json`, the tool returns a structured object. Note that late
 
 `cli-speedtest` is built on standard HTTP primitives, optimized for the Cloudflare infrastructure but designed for future provider extensibility:
 
-1. **Ping Phase**: Measures cold latency using lightweight HEAD requests. Calculates min, max, average, jitter, and packet loss.
+1. **Ping Phase**: Measures latency using lightweight `GET /cdn-cgi/trace` requests. Calculates min, max, average, jitter, and packet loss.
 2. **Download Phase**: Spawns concurrent `tokio` tasks that stream chunks from the provider. Implements **request pacing** to break machine-like patterns.
 3. **Upload Phase**: Generates random, uncompressible payload data in-memory and POSTs to the provider, ensuring network compression doesn't skew throughput results.
 4. **Resiliency Layer**: If the provider returns a rate-limit signal (HTTP 429), the engine fails fast with clear guidance or automatically falls back to a single-connection retry if appropriate.
@@ -184,7 +184,7 @@ RUST_LOG=debug cargo test
 
 ## Documentation
 
-Start with [docs/README.md](docs/README.md) for the documentation map. Operational behavior, local state, automation guarantees, and measurement limits are in [docs/OPERATIONS.md](docs/OPERATIONS.md).
+Start with [docs/README.md](docs/README.md) for the documentation map. Operational behavior, local state, automation guarantees, and measurement limits are in [docs/OPERATIONS.md](docs/OPERATIONS.md). Release history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Project Structure
 

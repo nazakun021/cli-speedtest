@@ -1,6 +1,6 @@
 # CLI Speedtest Operations Guide
 
-This document describes the current operational contract of `cli-speedtest` v0.1.4 for people running it manually and from automation.
+This document describes the current operational contract of `cli-speedtest` v0.1.5 for people running it manually and from automation.
 
 ## Supported Interfaces
 
@@ -27,7 +27,7 @@ Integrity Mode discards the first two seconds of download and upload data as **W
 
 Metrics describe the path to the selected Provider at the time of the test. Only successful HTTP latency probes contribute to ping statistics; timeouts and non-success HTTP responses count as Packet Loss. Results are not a complete ISP diagnosis and should not be compared across different providers, regions, Wi-Fi conditions, or connection counts.
 
-Custom providers must implement compatible `GET /__down`, `POST /__up`, and `HEAD /cdn-cgi/trace` endpoints. Before a custom-provider measurement, the CLI preflights the latency endpoint plus only the selected throughput directions with tiny requests. Incompatible URLs fail with the endpoint and HTTP status before Warm-up or high-concurrency traffic begins.
+Custom providers must implement compatible `GET /__down`, `POST /__up`, and `GET /cdn-cgi/trace` endpoints. Before a custom-provider measurement, the CLI preflights the latency endpoint plus only the selected throughput directions with tiny requests. Incompatible URLs fail with the endpoint and HTTP status before Warm-up or high-concurrency traffic begins.
 
 ## Local State and Updates
 
@@ -47,6 +47,7 @@ Before a release, run:
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test
+cargo audit
 ```
 
 Interactive startup is covered by an injected main-menu selector in tests, so it does not require a TTY or stdin.

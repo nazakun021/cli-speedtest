@@ -80,7 +80,7 @@ fn direct_mode_json_errors_are_valid_and_nonzero() {
 async fn ping_stats_returns_valid_measurements() {
     let mut server = mockito::Server::new_async().await;
     let _mock = server
-        .mock("HEAD", "/cdn-cgi/trace")
+        .mock("GET", "/cdn-cgi/trace")
         .with_status(200)
         .expect_at_least(3)
         .create_async()
@@ -105,7 +105,7 @@ async fn ping_stats_returns_valid_measurements() {
 async fn ping_stats_single_probe_has_zero_jitter() {
     let mut server = mockito::Server::new_async().await;
     let _mock = server
-        .mock("HEAD", "/cdn-cgi/trace")
+        .mock("GET", "/cdn-cgi/trace")
         .with_status(200)
         .create_async()
         .await;
@@ -125,7 +125,7 @@ async fn ping_stats_single_probe_has_zero_jitter() {
 async fn ping_stats_rejects_non_successful_responses() {
     let mut server = mockito::Server::new_async().await;
     let _mock = server
-        .mock("HEAD", "/cdn-cgi/trace")
+        .mock("GET", "/cdn-cgi/trace")
         .with_status(503)
         .expect_at_least(1)
         .create_async()
@@ -205,7 +205,7 @@ async fn no_download_flag_skips_download_and_returns_none() {
     let mut server = mockito::Server::new_async().await;
 
     let _ping = server
-        .mock("HEAD", "/cdn-cgi/trace")
+        .mock("GET", "/cdn-cgi/trace")
         .with_status(200)
         .expect_at_least(1)
         .create_async()
@@ -259,7 +259,7 @@ async fn no_upload_flag_skips_upload_and_returns_none() {
     let mut server = mockito::Server::new_async().await;
 
     let _ping = server
-        .mock("HEAD", "/cdn-cgi/trace")
+        .mock("GET", "/cdn-cgi/trace")
         .with_status(200)
         .expect_at_least(1)
         .create_async()
@@ -314,7 +314,7 @@ async fn both_no_flags_skips_both_tests() {
     let mut server = mockito::Server::new_async().await;
 
     let _ping = server
-        .mock("HEAD", "/cdn-cgi/trace")
+        .mock("GET", "/cdn-cgi/trace")
         .with_status(200)
         .expect_at_least(1)
         .create_async()
@@ -349,7 +349,7 @@ async fn custom_provider_url_is_used_and_reflected_in_result() {
     let mut server = mockito::Server::new_async().await;
 
     let _ping = server
-        .mock("HEAD", "/cdn-cgi/trace")
+        .mock("GET", "/cdn-cgi/trace")
         .with_status(200)
         .expect_at_least(1)
         .create_async()
@@ -400,7 +400,7 @@ async fn custom_provider_rejects_missing_selected_endpoint() {
     let mut server = mockito::Server::new_async().await;
 
     let _ping = server
-        .mock("HEAD", "/cdn-cgi/trace")
+        .mock("GET", "/cdn-cgi/trace")
         .with_status(200)
         .expect(1)
         .create_async()
@@ -656,7 +656,7 @@ async fn upload_aborts_on_low_speed() {
 async fn run_respects_global_timeout() {
     let mut server = mockito::Server::new_async().await;
     let _ping = server
-        .mock("HEAD", "/cdn-cgi/trace")
+        .mock("GET", "/cdn-cgi/trace")
         .with_status(200)
         .expect_at_least(1)
         .create_async()
@@ -695,7 +695,7 @@ async fn run_respects_global_timeout() {
 async fn test_quick_mode_bypasses_warmup() {
     let mut server = mockito::Server::new_async().await;
     let _ping = server
-        .mock("HEAD", "/cdn-cgi/trace")
+        .mock("GET", "/cdn-cgi/trace")
         .with_status(200)
         .expect_at_least(1)
         .create_async()
@@ -738,7 +738,7 @@ async fn test_cli_cooldown_and_quick_burst() {
 
     let mut server = mockito::Server::new_async().await;
     let _ping = server
-        .mock("HEAD", "/cdn-cgi/trace")
+        .mock("GET", "/cdn-cgi/trace")
         .with_status(200)
         .expect_at_least(1)
         .create_async()

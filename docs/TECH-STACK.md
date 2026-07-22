@@ -46,6 +46,7 @@ This document defines the technical foundations, dependency policies, and develo
 - **CLI Contract Testing**: Direct Mode failures must return a nonzero exit status and, with `--json`, a valid JSON error object on stdout.
 - **Test Isolation**: Tests must not read from stdin, call public providers, or share mutable process environment without serialization.
 - **Release Target Coverage**: The self-update asset mapping must be unit-tested for every target produced by the release workflow.
+- **Dependency Security**: Run `cargo audit` before a release. Keep `Cargo.lock` under version control so audited dependency resolutions are reproducible.
 - **Implementation Discipline**: Avoid `unwrap()` in production paths; work in vertical slices and add a failing test before a behavior change.
 
 ## Dependency Policy
