@@ -6,11 +6,11 @@ A production-grade, resilient CLI speedtest tool written in Rust. Designed for m
 
 ## Features
 
-- **Interactive by Default**: User-friendly TTY menu for manual tests and settings. It shows the selected mode, duration, connections, ping probes, and Cooldown state before a test. Automatically switches to script-mode when flags are provided or in non-TTY environments.
+- **Interactive by Default**: User-friendly TTY menu for manual tests and settings. It shows the selected mode, duration, connections, ping probes, and Cooldown state before a test. Automatically switches to Direct Mode for measurement and execution flags or in non-TTY environments.
 - **Resilient Network Engine**:
-  - **Provider-Friendly Design**: Built-in 5-minute local cooldown for standard runs. Supports **Quick Mode** (bypasses warm-up and standard cooldown) with a burst limit of 5 successive runs.
+  - **Provider-Friendly Design**: Built-in 5-minute local cooldown for standard runs. **Quick Mode** bypasses Warm-up and the standard Cooldown for up to five successful Quick Burst runs.
   - **Anti-Ban Hardening**: Implements User-Agent rotation and request pacing (jitter) to ensure consistent connectivity.
-  - **Adaptive Fallback**: Automatically scales down to a single connection if rate-limited, ensuring the test completes even on restrictive networks.
+  - **Adaptive Fallback**: Retries an affected throughput phase with one connection when rate-limited; the Provider can still reject that retry.
 - **Production Grade Accuracy**:
   - **Warm-up Phase**: Discards the first 2 seconds of transfer data to avoid TCP slow-start bias (bypassed in Quick Mode).
   - **High Concurrency**: Multi-threaded engine using `tokio` tasks and `Barrier` synchronization to saturate high-speed links.
@@ -34,6 +34,8 @@ cargo install cli-speedtest
 ### Pre-compiled Binaries (GitHub Releases)
 
 You can directly download and install the latest pre-compiled binaries from the terminal.
+
+Each published binary has an adjacent `.sha256` file. Compare its SHA-256 value with the downloaded binary before executing it when integrity verification is required.
 
 **Linux (amd64):**
 
@@ -101,20 +103,20 @@ The main menu distinguishes a **Configured Test** from a one-off **Quick Test**.
 
 Pass a measurement or execution flag to bypass the menu and run directly. Direct Mode is optimized for scripting and automation:
 
-| Flag                    | Description                                                  | Default            |
-| ----------------------- | ------------------------------------------------------------ | ------------------ |
-| `-d, --duration <SECS>` | Length of the test in seconds                                | `10`               |
-| `-c, --connections <N>` | Number of parallel connections                               | `4` (DL), `2` (UL) |
-| `--server <URL>`        | Custom Provider base URL; selected endpoints are preflighted | Cloudflare         |
-| `--ping-count <N>`      | Number of pings to send                                      | `20`               |
-| `--no-download`         | Skip the download test                                       | -                  |
-| `--no-upload`           | Skip the upload test                                         | -                  |
-| `--json`                | Output results in JSON format                                | -                  |
-| `--no-color`            | Disable terminal styling                                     | -                  |
-| `--debug`               | Enable verbose logging                                       | -                  |
-| `--force-run`           | Bypass the local cooldown and run immediately                | -                  |
-| `--quick`               | Bypass warm-up and cooldown (Quick Mode)                     | -                  |
-| `--self-update`         | Check for updates and install latest immediately             | -                  |
+| Flag                    | Description                                                                                 | Default            |
+| ----------------------- | ------------------------------------------------------------------------------------------- | ------------------ |
+| `-d, --duration <SECS>` | Length of the test in seconds                                                               | `10`               |
+| `-c, --connections <N>` | Number of parallel connections                                                              | `4` (DL), `2` (UL) |
+| `--server <URL>`        | Custom Provider base URL; selected endpoints are preflighted                                | Cloudflare         |
+| `--ping-count <N>`      | Number of pings to send                                                                     | `20`               |
+| `--no-download`         | Skip the download test                                                                      | -                  |
+| `--no-upload`           | Skip the upload test                                                                        | -                  |
+| `--json`                | Output results in JSON format                                                               | -                  |
+| `--no-color`            | Disable terminal styling                                                                    | -                  |
+| `--debug`               | Enable verbose logging                                                                      | -                  |
+| `--force-run`           | Bypass the local cooldown and run immediately                                               | -                  |
+| `--quick`               | Fast estimate; bypasses Warm-up and standard Cooldown within the five-run Quick Burst limit | -                  |
+| `--self-update`         | Check for updates and install latest immediately                                            | -                  |
 
 ### Environment Variables
 

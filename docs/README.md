@@ -9,6 +9,7 @@ This directory contains the maintained project documentation for `cli-speedtest`
 - [ROADMAP.md](ROADMAP.md): completed work and future capabilities.
 - [TECH-STACK.md](TECH-STACK.md): runtime choices, development standards, and dependency policy.
 - [RELEASING.md](RELEASING.md): the verified release procedure for Crates.io and GitHub Releases.
+- [../CHANGELOG.md](../CHANGELOG.md): shipped release history and release-specific verification evidence.
 - [SPEC.md](SPEC.md): archived Phase 2.6 implementation plan; not the current operational source of truth.
 
 ## Decisions

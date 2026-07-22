@@ -11,7 +11,7 @@ resolved and verified via integration tests.
 | Category     | Issue                                | Severity  | Status                                    |
 | ------------ | ------------------------------------ | --------- | ----------------------------------------- |
 | Bug          | Upload errors silently dropped       | 🔴 High   | ✅ Fixed                                  |
-| Bug          | `GET` ping inflates latency          | 🟡 Medium | ✅ Fixed                                  |
+| Bug          | Unsupported `HEAD` latency probe     | 🟡 Medium | ✅ Fixed (`GET /cdn-cgi/trace`)           |
 | Bug          | Duplicate `WARMUP_SECS` constants    | 🟡 Medium | ✅ Resolved (Moved to `utils.rs`)         |
 | Bug          | Timer starts before task spawn       | 🟡 Medium | ✅ Resolved (Synchronized via `Barrier`)  |
 | Bug          | Deprecated `thread_rng()` usage      | 🟡 Medium | ✅ Resolved (Updated to `rand 0.9` API)   |
@@ -134,6 +134,9 @@ Ensure the tool is kept up-to-date in production using safe background/foregroun
       behaviour from P2.6-1 and the cooldown logic from P2.6-7.
 - [x] **Interactive Menu Testability**: Inject main-menu selections so startup
       and Self-Update flows can run in non-interactive tests.
+- [x] **Release v0.1.5**: Restored the live Cloudflare latency probe, audited
+      dependencies, tracked `Cargo.lock`, and verified Crates.io, GitHub assets,
+      checksums, and production Self-Update.
 - [ ] **Refine Error Handling**: Implement custom error types using `thiserror`
       for better programmatic error handling downstream.
 - [ ] **WASM Support**: Explore compiling the core library to WASM for a

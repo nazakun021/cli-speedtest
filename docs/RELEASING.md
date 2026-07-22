@@ -37,8 +37,12 @@ SPEEDTEST_MOCK_DATA_DIR="$(mktemp -d)" \
 
 1. Check the GitHub Release contains all four binaries and four checksum files.
 2. Download the native asset and verify its SHA-256 checksum.
-3. Run `cli-speedtest --self-update` from the previous version to test the live update path when a newer release is available.
+3. Run `cli-speedtest --self-update` from the previous version to test the live update path when a newer release is available. For an isolated verification, run a downloaded previous-version executable from a disposable path so `self-replace` updates only that copy; then confirm it reports the new version and remains executable.
 
 ## Security Notes
 
 `cargo audit` must report no vulnerabilities. Warnings without a published upstream fix require explicit release-owner review and must be recorded in the changelog or release notes.
+
+## Verified Release: 0.1.5
+
+Version `0.1.5` was published to Crates.io and GitHub Releases on 2026-07-22 from tag `v0.1.5`. The release passed the full runbook, including a live Cloudflare smoke test, all four GitHub asset/checksum pairs, and a production `0.1.4` to `0.1.5` self-update verification.
